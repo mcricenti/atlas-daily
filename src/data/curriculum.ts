@@ -1,1 +1,1 @@
-LOADING_FULL_FROM_BATCH
+__LOAD_FILE__/tmp/curriculum.ts
