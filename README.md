@@ -1,5 +1,7 @@
 # Atlas Daily
 
+GitHub: [mcricenti/atlas-daily](https://github.com/mcricenti/atlas-daily)
+
 A geography learning app for kids built around **direct instruction** and **spaced repetition**. About **10 minutes a day**.
 
 ## What kids learn
