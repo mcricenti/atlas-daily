@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-body: "Nunito", system-ui, sans-serif;
+  --color-ocean-950: #06262f;
+  --color-ocean-900: #0b3d4a;
+  --color-ocean-800: #0f5363;
+  --color-ocean-700: #176b7a;
+  --color-sea-300: #7ed6c1;
+  --color-sea-200: #b8ebe0;
+  --color-sand-100: #f3efe6;
+  --color-sand-200: #e8dfd0;
+  --color-coral: #e07a5f;
+  --color-amber: #f4a261;
+  --color-moss: #3d6b4f;
+  --color-ink: #1a2e35;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background:
+    radial-gradient(ellipse 90% 60% at 10% 0%, rgba(126, 214, 193, 0.18), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 90% 10%, rgba(244, 162, 97, 0.16), transparent 50%),
+    linear-gradient(165deg, #f7f4ee 0%, #e8f3f1 45%, #dceef0 100%);
+  background-attachment: fixed;
+}
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 30h60M30 0v60' stroke='%230b3d4a' stroke-width='1' fill='none'/%3E%3C/svg%3E");
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+@keyframes float-soft {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(126, 214, 193, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(126, 214, 193, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(126, 214, 193, 0);
+  }
+}
+
+.animate-float {
+  animation: float-soft 4s ease-in-out infinite;
+}
+
+.animate-pop {
+  animation: pop-in 0.35s ease-out both;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+.atlas-grid {
+  background-image:
+    linear-gradient(rgba(11, 61, 74, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(11, 61, 74, 0.06) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
