@@ -1,0 +1,1 @@
+/tmp/curriculum.ts
