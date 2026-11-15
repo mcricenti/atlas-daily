@@ -38,11 +38,32 @@ Dev server: [http://127.0.0.1:3847](http://127.0.0.1:3847)
 
 ## Deploy to Cloudflare Workers
 
+Local:
+
 ```bash
 npm run deploy
 ```
 
-Uses the Cloudflare Vite plugin + Workers static assets (`wrangler.jsonc`).
+### Connect GitHub (auto-deploy on push)
+
+**Option A — Workers Builds (recommended)**
+
+1. Open [Workers & Pages](https://dash.cloudflare.com/?to=/:account/workers-and-pages)
+2. Select the **atlas-daily** Worker (the one you claimed)
+3. **Settings → Builds → Connect**
+4. Authorize the Cloudflare GitHub App if prompted
+5. Choose repo **mcricenti/atlas-daily**, branch **main**
+6. Build command: `npm run build` · Deploy command: `npx wrangler deploy`
+
+**Option B — GitHub Actions**
+
+1. Create a Cloudflare API token with **Edit Cloudflare Workers**
+2. In GitHub → **Settings → Secrets and variables → Actions**, add:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+3. Push to `main` (or run the **Deploy to Cloudflare Workers** workflow)
+
+Uses the Cloudflare Vite plugin + Workers static assets (`wrangler.jsonc`). Worker name must stay `atlas-daily` to match the dashboard.
 
 ## Stack
 
