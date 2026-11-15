@@ -44,6 +44,14 @@ Local:
 npm run deploy
 ```
 
+Temporary preview (no Cloudflare account required):
+
+```bash
+npm run build && npx wrangler deploy --temporary
+```
+
+Wrangler prints a `*.workers.dev` URL and a claim URL (claim within ~60 minutes).
+
 ### Live sites
 
 - **Cursor host:** https://atlas-daily.apps.grok.bot
@@ -57,6 +65,8 @@ This repo is also linked as Pages project **atlas-daily-1te**. In the dashboard,
 
 - **Build command:** `npm run build`
 - **Build output directory:** `dist` (required — if this is `/` or empty, Pages serves the Vite source and the app breaks)
+
+Do **not** set `pages_build_output_dir` in `wrangler.jsonc` — it conflicts with Workers Assets SPA handling on `wrangler deploy --temporary`.
 
 Then push to `main` (or Retry deployment).
 

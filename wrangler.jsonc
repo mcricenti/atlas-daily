@@ -2,8 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "atlas-daily",
   "compatibility_date": "2026-11-14",
-  // Used when this repo is linked as a Cloudflare Pages project
-  "pages_build_output_dir": "dist",
+  // Workers Assets SPA. Pages projects should set Build output directory to `dist` in the dashboard (do not set pages_build_output_dir here — it conflicts with assets.not_found_handling on `wrangler deploy --temporary`).
   "assets": {
     "not_found_handling": "single-page-application"
   },
