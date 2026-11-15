@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ensureCard, recordSessionComplete, type Explorer } from '../lib/storage'
 import { buildDailySession, sessionMeta } from '../lib/session'
 import { reviewCard, type Grade } from '../lib/srs'
+import { formatPopulation } from '../data/curriculum'
 import { AtlasMap } from './AtlasMap'
 
 type Props = {
@@ -198,6 +199,11 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
               <p className="text-lg leading-relaxed text-ocean-800">
                 {step.prompt}
               </p>
+              {typeof step.fact.population === 'number' && (
+                <p className="text-base font-bold text-ocean-900">
+                  Population: about {formatPopulation(step.fact.population)} people
+                </p>
+              )}
               <p className="rounded-2xl bg-sea-200/40 px-4 py-3 text-sm font-semibold text-ocean-900">
                 {step.fact.clue}
               </p>
@@ -206,14 +212,19 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
                   options={[step.fact]}
                   targetId={step.fact.id}
                   highlightId={step.fact.id}
+                  interactive={false}
                   disabled
                   onSelect={() => undefined}
                 />
               )}
               <button
                 type="button"
-                onClick={onTeachContinue}
-                className="w-full rounded-2xl bg-ocean-900 py-3.5 text-lg font-extrabold text-sand-100"
+                onPointerUp={(e) => {
+                  e.preventDefault()
+                  onTeachContinue()
+                }}
+                className="relative z-20 w-full rounded-2xl bg-[#0b3d4a] py-3.5 text-lg font-extrabold text-[#f3efe6]"
+                style={{ touchAction: 'manipulation' }}
               >
                 Got it — practice next
               </button>
@@ -240,14 +251,18 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
                       key={choice}
                       type="button"
                       disabled={Boolean(feedback)}
-                      onClick={() => onChoice(choice)}
-                      className={`rounded-2xl border-2 px-4 py-3.5 text-left text-base font-bold transition sm:text-lg ${
+                      onPointerUp={(e) => {
+                        e.preventDefault()
+                        if (!feedback) onChoice(choice)
+                      }}
+                      className={`relative z-20 rounded-2xl border-2 px-4 py-3.5 text-left text-base font-bold transition sm:text-lg ${
                         showCorrect
                           ? 'border-sea-300 bg-sea-200/60 text-ocean-950'
                           : showWrong
                             ? 'border-coral bg-coral/15 text-ocean-950'
                             : 'border-ocean-900/10 bg-sand-100 hover:border-ocean-700/40'
                       }`}
+                      style={{ touchAction: 'manipulation' }}
                     >
                       {choice}
                     </button>
