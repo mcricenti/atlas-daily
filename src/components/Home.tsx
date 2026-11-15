@@ -124,15 +124,23 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
           <div className="relative mt-6 flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={onStartLesson}
-              className="rounded-2xl bg-coral px-6 py-3.5 text-lg font-extrabold text-white shadow-lg transition hover:brightness-105"
+              onPointerUp={(e) => {
+                e.preventDefault()
+                onStartLesson()
+              }}
+              className="relative z-20 rounded-2xl bg-[#e07a5f] px-6 py-3.5 text-lg font-extrabold text-white shadow-lg transition hover:brightness-105"
+              style={{ touchAction: 'manipulation' }}
             >
               Start today&apos;s lesson
             </button>
             <button
               type="button"
-              onClick={onOpenProgress}
-              className="rounded-2xl bg-white/10 px-5 py-3.5 font-bold text-sand-100 ring-1 ring-white/20 backdrop-blur"
+              onPointerUp={(e) => {
+                e.preventDefault()
+                onOpenProgress()
+              }}
+              className="relative z-20 rounded-2xl bg-white/10 px-5 py-3.5 font-bold text-sand-100 ring-1 ring-white/20 backdrop-blur"
+              style={{ touchAction: 'manipulation' }}
             >
               Trail map
             </button>
