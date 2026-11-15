@@ -587,7 +587,9 @@ function WorldAtlasMap({
             c.fact?.id === targetId ||
             (highlightId && c.fact?.id === highlightId) ||
             countryMatchKey(c.name) ===
-              countryMatchKey(optionById.get(targetId)?.name ?? '')
+              countryMatchKey(
+                optionById.get(targetId)?.name ?? '',
+              )
           return (
             <path
               key={c.id}
@@ -815,18 +817,18 @@ function FallbackPinMap({
                   rx={8}
                   fill="rgba(247,244,238,0.95)"
                 />
-                  <text
-                    textAnchor="middle"
-                    y={pin.labelSecondary ? -3 : 2}
-                    style={{
-                      fontFamily: 'Nunito, sans-serif',
-                      fontSize: 13,
-                      fontWeight: 800,
-                      fill: '#0b3d4a',
-                    }}
-                  >
-                    {pin.labelPrimary}
-                  </text>
+                <text
+                  textAnchor="middle"
+                  y={pin.labelSecondary ? -3 : 2}
+                  style={{
+                    fontFamily: 'Nunito, sans-serif',
+                    fontSize: 13,
+                    fontWeight: 800,
+                    fill: '#0b3d4a',
+                  }}
+                >
+                  {pin.labelPrimary}
+                </text>
                 {pin.labelSecondary ? (
                   <text
                     textAnchor="middle"
