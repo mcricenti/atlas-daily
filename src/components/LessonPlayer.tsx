@@ -219,10 +219,7 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
               )}
               <button
                 type="button"
-                onPointerUp={(e) => {
-                  e.preventDefault()
-                  onTeachContinue()
-                }}
+                onClick={() => onTeachContinue()}
                 className="relative z-20 w-full rounded-2xl bg-[#0b3d4a] py-3.5 text-lg font-extrabold text-[#f3efe6]"
                 style={{ touchAction: 'manipulation' }}
               >
@@ -251,8 +248,7 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
                       key={choice}
                       type="button"
                       disabled={Boolean(feedback)}
-                      onPointerUp={(e) => {
-                        e.preventDefault()
+                      onClick={() => {
                         if (!feedback) onChoice(choice)
                       }}
                       className={`relative z-20 rounded-2xl border-2 px-4 py-3.5 text-left text-base font-bold transition sm:text-lg ${
