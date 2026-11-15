@@ -44,14 +44,21 @@ Local:
 npm run deploy
 ```
 
-### GitHub → Cloudflare (connected)
+### Live sites
 
-Repo [mcricenti/atlas-daily](https://github.com/mcricenti/atlas-daily) is linked to **Cloudflare Pages**. Pushes to `main` auto-build and deploy.
+- **Cursor host:** https://atlas-daily.apps.grok.bot
+- **Workers (claimed):** https://atlas-daily.wirehaired-jingle.workers.dev
 
-- Production: https://atlas-daily.pages.dev
-- Dashboard: [Pages → atlas-daily](https://dash.cloudflare.com/?to=/:account/pages)
+Note: `https://atlas-daily.pages.dev` is a **different** Cloudflare project (an intelligence feed), not this geography app.
 
-Build settings (if you need to re-check): build command `npm run build`, output directory `dist`.
+### GitHub → Cloudflare Pages (`atlas-daily-1te`)
+
+This repo is also linked as Pages project **atlas-daily-1te**. In the dashboard, set:
+
+- **Build command:** `npm run build`
+- **Build output directory:** `dist` (required — if this is `/` or empty, Pages serves the Vite source and the app breaks)
+
+Then push to `main` (or Retry deployment).
 
 ## Stack
 
