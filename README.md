@@ -53,8 +53,9 @@ npm run deploy
 
 ### Live sites
 
-- **Cursor host:** https://atlas-daily.apps.grok.bot
-- **Workers (claimed):** https://atlas-daily.wirehaired-jingle.workers.dev
+- **Workers (latest preview):** https://atlas-daily.colossal-plough.workers.dev  
+  Claim into your Cloudflare account (60‑minute window when freshly deployed): use the claim link from the latest deploy output / chat.
+- **Workers (earlier claimed):** https://atlas-daily.wirehaired-jingle.workers.dev — redeploy after claim/`wrangler login` to refresh.
 
 Note: `https://atlas-daily.pages.dev` is a **different** Cloudflare project (an intelligence feed), not this geography app.
 
