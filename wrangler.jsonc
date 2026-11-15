@@ -2,8 +2,6 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "atlas-daily",
   "compatibility_date": "2026-11-14",
-  // Used when this repo is linked as a Cloudflare Pages project
-  "pages_build_output_dir": "dist",
   "assets": {
     "not_found_handling": "single-page-application"
   },
