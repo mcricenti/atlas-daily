@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import type { GeoFact } from '../data/curriculum'
 
 type Props = {
@@ -6,6 +5,7 @@ type Props = {
   targetId: string
   highlightId?: string
   disabled?: boolean
+  interactive?: boolean
   onSelect: (fact: GeoFact) => void
   feedback?: 'correct' | 'wrong' | null
   selectedId?: string | null
@@ -16,13 +16,26 @@ export function AtlasMap({
   targetId,
   highlightId,
   disabled,
+  interactive = true,
   onSelect,
   feedback,
   selectedId,
 }: Props) {
+  const canTap = interactive && !disabled
+
   return (
-    <div className="atlas-grid relative overflow-hidden rounded-3xl border border-ocean-900/10 bg-gradient-to-br from-ocean-900 via-ocean-800 to-ocean-700 shadow-inner">
-      <svg viewBox="0 0 100 100" className="h-auto w-full max-h-[340px]">
+    <div
+      className="atlas-grid relative overflow-hidden rounded-3xl border border-[#0b3d4a]/15 shadow-inner"
+      style={{
+        background:
+          'linear-gradient(145deg, #0b3d4a 0%, #0f5363 45%, #176b7a 100%)',
+      }}
+    >
+      <svg
+        viewBox="0 0 100 100"
+        className="pointer-events-none h-auto w-full max-h-[340px]"
+        aria-hidden
+      >
         <defs>
           <radialGradient id="glow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#7ed6c1" stopOpacity="0.35" />
@@ -30,7 +43,6 @@ export function AtlasMap({
           </radialGradient>
         </defs>
         <ellipse cx="50" cy="50" rx="46" ry="42" fill="url(#glow)" />
-        {/* Decorative latitude lines */}
         {[20, 40, 60, 80].map((y) => (
           <ellipse
             key={y}
@@ -59,7 +71,11 @@ export function AtlasMap({
         {options.map((fact) => {
           if (!fact.pin) return null
           const isTarget = fact.id === targetId
-          const isHighlight = fact.id === highlightId || (isTarget && !selectedId)
+          const isHighlight =
+            fact.id === highlightId || (isTarget && !selectedId && canTap)
+          const showPin = interactive || fact.id === targetId || fact.id === highlightId
+          if (!showPin && !interactive) return null
+
           const isSelected = fact.id === selectedId
           const wrong =
             feedback === 'wrong' && isSelected && fact.id !== targetId
@@ -68,42 +84,37 @@ export function AtlasMap({
 
           return (
             <g key={fact.id}>
-              {(isHighlight || correct) && (
+              {(isHighlight || correct || (!interactive && fact.id === targetId)) && (
                 <circle
                   cx={fact.pin.x}
                   cy={fact.pin.y}
-                  r="6"
-                  fill="rgba(126,214,193,0.25)"
-                  className={isHighlight && !feedback ? 'animate-pulse-ring' : ''}
+                  r="7"
+                  fill="rgba(126,214,193,0.28)"
                 />
               )}
-              <motion.circle
+              <circle
                 cx={fact.pin.x}
                 cy={fact.pin.y}
-                r={correct ? 4.2 : 3.4}
+                r={correct ? 4.4 : 3.6}
                 fill={
                   correct
                     ? '#7ed6c1'
                     : wrong
                       ? '#e07a5f'
-                      : isHighlight
+                      : isHighlight || (!interactive && fact.id === targetId)
                         ? '#f4a261'
                         : '#b8ebe0'
                 }
                 stroke="#06262f"
                 strokeWidth="0.6"
-                whileHover={disabled ? undefined : { scale: 1.25 }}
-                whileTap={disabled ? undefined : { scale: 0.9 }}
-                style={{ cursor: disabled ? 'default' : 'pointer' }}
-                onClick={() => !disabled && onSelect(fact)}
               />
               <text
                 x={fact.pin.x}
-                y={fact.pin.y + 7.5}
+                y={fact.pin.y + 8}
                 textAnchor="middle"
-                fontSize="2.6"
-                fill="rgba(243,239,230,0.85)"
-                style={{ pointerEvents: 'none', fontFamily: 'Nunito, sans-serif' }}
+                fontSize="2.8"
+                fill="rgba(243,239,230,0.9)"
+                style={{ fontFamily: 'Nunito, sans-serif' }}
               >
                 {fact.name.length > 12 ? fact.name.slice(0, 11) + '…' : fact.name}
               </text>
@@ -111,9 +122,43 @@ export function AtlasMap({
           )
         })}
       </svg>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ocean-950/40 to-transparent px-4 pb-3 pt-8">
-        <p className="text-center text-xs font-semibold tracking-wide text-sea-200/90">
-          Stylized atlas · tap a glowing pin
+
+      {/* Large HTML hit targets — more reliable than tiny SVG circles on touch */}
+      {canTap &&
+        options.map((fact) => {
+          if (!fact.pin) return null
+          return (
+            <button
+              key={`hit-${fact.id}`}
+              type="button"
+              aria-label={`Select ${fact.name}`}
+              className="absolute z-10 -translate-x-1/2 -translate-y-1/2 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f4a261]"
+              style={{
+                left: `${fact.pin.x}%`,
+                top: `${fact.pin.y}%`,
+                width: '14%',
+                height: '14%',
+                minWidth: 44,
+                minHeight: 44,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                touchAction: 'manipulation',
+              }}
+              onPointerUp={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onSelect(fact)
+              }}
+            />
+          )
+        })}
+
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#06262f]/50 to-transparent px-4 pb-3 pt-8">
+        <p className="text-center text-xs font-semibold tracking-wide text-[#b8ebe0]">
+          {canTap
+            ? 'Tap a glowing pin on the atlas'
+            : 'Find this place on the atlas'}
         </p>
       </div>
     </div>
