@@ -103,3 +103,22 @@ button {
     linear-gradient(90deg, rgba(11, 61, 74, 0.06) 1px, transparent 1px);
   background-size: 28px 28px;
 }
+
+@media print {
+  @page {
+    margin: 0.6in;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  button:disabled {
+    color: black !important;
+  }
+}

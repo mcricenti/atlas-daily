@@ -27,6 +27,13 @@ Inspired by strong patterns from apps like Yonder, US States Trainer, Geo Touch,
 
 Progress stays on the device (localStorage). Multiple explorers (siblings) are supported.
 
+### Section final review
+
+On the **Trail map**, each unlocked unit has **Final review · worksheet**:
+
+- Electronic fill-in blanks with a **word bank** (place names and capitals)
+- **Print worksheet** for paper practice (name/date line + answer key at bottom)
+
 ## Run locally
 
 ```bash

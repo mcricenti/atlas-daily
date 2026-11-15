@@ -6,9 +6,10 @@ import { isUnitUnlocked, overallMastery, unitProgress } from '../lib/storage'
 type Props = {
   onBack: () => void
   onStartLesson: () => void
+  onOpenReview: (unitId: string) => void
 }
 
-export function Progress({ onBack, onStartLesson }: Props) {
+export function Progress({ onBack, onStartLesson, onOpenReview }: Props) {
   const { active, resetProgress } = useApp()
   if (!active) return null
 
@@ -101,7 +102,7 @@ export function Progress({ onBack, onStartLesson }: Props) {
                             ) : null}
                           </span>
                           <span
-                            className={`ml-2 shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
+                            className={`ml-2 shrink-0 rounded-lc px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
                               label === 'Mastered'
                                 ? 'bg-sea-300/40 text-ocean-900'
                                 : label === 'Strong'
@@ -117,6 +118,18 @@ export function Progress({ onBack, onStartLesson }: Props) {
                       )
                     })}
                   </ul>
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => onOpenReview(unit.id)}
+                      className="rounded-2xl bg-ocean-900 px-4 py-2.5 text-sm font-extrabold text-sand-100"
+                    >
+                      Final review · worksheet
+                    </button>
+                    <p className="mt-2 text-xs font-semibold text-ocean-700">
+                      Fill-in blanks with a word bank — on screen or print.
+                    </p>
+                  </div>
                 </>
               )}
             </section>
