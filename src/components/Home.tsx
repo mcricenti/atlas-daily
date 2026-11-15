@@ -151,12 +151,13 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
           <div className="relative mt-6 flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={onStartLesson}
-              onPointerDown={(e) => {
-                if (e.pointerType === 'touch') e.preventDefault()
+              onClick={(e) => {
+                e.preventDefault()
+                onStartLesson()
               }}
               onPointerUp={(e) => {
                 if (e.pointerType !== 'touch') return
+                e.preventDefault()
                 onStartLesson()
               }}
               className="relative z-20 rounded-2xl bg-[#e07a5f] px-6 py-3.5 text-lg font-extrabold text-white shadow-lg transition hover:brightness-105"
@@ -166,12 +167,13 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
             </button>
             <button
               type="button"
-              onClick={onOpenProgress}
-              onPointerDown={(e) => {
-                if (e.pointerType === 'touch') e.preventDefault()
+              onClick={(e) => {
+                e.preventDefault()
+                onOpenProgress()
               }}
               onPointerUp={(e) => {
                 if (e.pointerType !== 'touch') return
+                e.preventDefault()
                 onOpenProgress()
               }}
               className="relative z-20 rounded-2xl bg-white/10 px-5 py-3.5 font-bold text-sand-100 ring-1 ring-white/20 backdrop-blur"

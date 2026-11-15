@@ -66,7 +66,7 @@ const COUNTRY_ALIASES: Record<string, string> = {
   'united states of america': 'united states',
   usa: 'united states',
   'dem rep congo': 'democratic republic of the congo',
-  congo: 'republic of the congo',
+  'congo': 'republic of the congo',
   'dominican rep': 'dominican republic',
   'central african rep': 'central african republic',
   "cote d'ivoire": 'ivory coast',

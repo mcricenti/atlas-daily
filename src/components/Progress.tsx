@@ -102,7 +102,7 @@ export function Progress({ onBack, onStartLesson, onOpenReview }: Props) {
                             ) : null}
                           </span>
                           <span
-                            className={`ml-2 shrink-0 rounded-lc px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
+                            className={`ml-2 shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
                               label === 'Mastered'
                                 ? 'bg-sea-300/40 text-ocean-900'
                                 : label === 'Strong'
