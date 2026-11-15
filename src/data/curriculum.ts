@@ -1,5 +1,5 @@
 export type { FactKind, GeoFact, Unit } from './curriculum-types'
-export { UNITS } from './curriculum-types'
+export { UNITS, formatPopulation } from './curriculum-types'
 import { UNITS, type GeoFact, type Unit } from './curriculum-types'
 import { FACTS_US } from './curriculum-facts-us'
 import { FACTS_INTL_A } from './curriculum-facts-intl-a'
