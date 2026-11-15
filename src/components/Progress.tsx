@@ -1,4 +1,4 @@
-import { UNITS, factsForUnit } from '../data/curriculum'
+import { UNITS, factsForUnit, formatPopulation } from '../data/curriculum'
 import { useApp } from '../state/AppContext'
 import { masteryLabel } from '../lib/srs'
 import { isUnitUnlocked, overallMastery, unitProgress } from '../lib/storage'
@@ -92,6 +92,11 @@ export function Progress({ onBack, onStartLesson }: Props) {
                               <span className="font-semibold text-ocean-700">
                                 {' '}
                                 · {fact.capital}
+                              </span>
+                            ) : null}
+                            {typeof fact.population === 'number' ? (
+                              <span className="block text-xs font-semibold text-ocean-700">
+                                Pop. {formatPopulation(fact.population)}
                               </span>
                             ) : null}
                           </span>
