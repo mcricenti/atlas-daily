@@ -124,7 +124,14 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
           <div className="relative mt-6 flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => onStartLesson()}
+              onClick={onStartLesson}
+              onPointerDown={(e) => {
+                if (e.pointerType === 'touch') e.preventDefault()
+              }}
+              onPointerUp={(e) => {
+                if (e.pointerType !== 'touch') return
+                onStartLesson()
+              }}
               className="relative z-20 rounded-2xl bg-[#e07a5f] px-6 py-3.5 text-lg font-extrabold text-white shadow-lg transition hover:brightness-105"
               style={{ touchAction: 'manipulation' }}
             >
@@ -132,7 +139,14 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
             </button>
             <button
               type="button"
-              onClick={() => onOpenProgress()}
+              onClick={onOpenProgress}
+              onPointerDown={(e) => {
+                if (e.pointerType === 'touch') e.preventDefault()
+              }}
+              onPointerUp={(e) => {
+                if (e.pointerType !== 'touch') return
+                onOpenProgress()
+              }}
               className="relative z-20 rounded-2xl bg-white/10 px-5 py-3.5 font-bold text-sand-100 ring-1 ring-white/20 backdrop-blur"
               style={{ touchAction: 'manipulation' }}
             >
