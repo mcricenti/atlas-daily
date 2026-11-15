@@ -12,8 +12,14 @@ function Shell() {
   const [reviewUnitId, setReviewUnitId] = useState<string | null>(null)
   const { active, updateExplorer } = useApp()
 
+  const welcome = screen === 'home' && !active
+
   return (
-    <main className="min-h-screen pb-16 print:bg-white print:pb-0">
+    <main
+      className={`min-h-screen print:bg-white print:pb-0 ${
+        welcome ? 'pb-0' : 'pb-16'
+      }`}
+    >
       {screen === 'home' && (
         <Home
           onStartLesson={() => setScreen('lesson')}

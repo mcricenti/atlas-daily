@@ -2,6 +2,7 @@
 
 @theme {
   --font-display: "Fraunces", Georgia, serif;
+  --font-brand: "Fredoka", "Nunito", system-ui, sans-serif;
   --font-body: "Nunito", system-ui, sans-serif;
   --color-ocean-950: #06262f;
   --color-ocean-900: #0b3d4a;
@@ -50,6 +51,54 @@ button {
 
 .font-display {
   font-family: var(--font-display);
+}
+
+.font-brand {
+  font-family: var(--font-brand);
+}
+
+.brand-title {
+  font-family: var(--font-brand);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.92;
+  background: linear-gradient(118deg, #fff8e6 0%, #ffd56a 32%, #9af0d8 72%, #7ed6c1 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter:
+    drop-shadow(0 3px 0 rgba(6, 38, 47, 0.45))
+    drop-shadow(0 10px 24px rgba(0, 0, 0, 0.28));
+}
+
+@keyframes drift-glow {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.06) translateY(-8px);
+    opacity: 0.85;
+  }
+}
+
+@keyframes title-bounce {
+  0%,
+  100% {
+    transform: rotate(-1.5deg);
+  }
+  50% {
+    transform: rotate(1.5deg);
+  }
+}
+
+.animate-drift-glow {
+  animation: drift-glow 7s ease-in-out infinite;
+}
+
+.animate-title-bounce {
+  animation: title-bounce 5s ease-in-out infinite;
 }
 
 @keyframes float-soft {

@@ -21,52 +21,79 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
 
   if (!active) {
     return (
-      <div className="mx-auto flex min-h-[80vh] max-w-xl flex-col justify-center px-4 py-10">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center"
-        >
-          <div className="mx-auto mb-6 flex h-20 w-20 animate-float items-center justify-center rounded-full bg-ocean-900 shadow-lg">
-            <GlobeMark />
-          </div>
-          <p className="text-sm font-extrabold uppercase tracking-[0.25em] text-coral">
-            Atlas Daily
-          </p>
-          <h1 className="mt-3 font-display text-4xl leading-tight text-ocean-950 sm:text-5xl">
-            Ten minutes to master the map
-          </h1>
-          <p className="mx-auto mt-4 max-w-md text-lg text-ocean-800/85">
-            Direct instruction plus spaced repetition — states, capitals,
-            continents, oceans, rivers, Europe, and Africa.
-          </p>
-        </motion.div>
+      <section className="relative isolate h-[100svh] max-h-[100svh] overflow-hidden">
+        <img
+          src="/world-hero.jpg"
+          alt="Illustrated Earth from space"
+          className="absolute inset-0 h-full w-full scale-105 object-cover object-[center_35%]"
+          decoding="async"
+        />
+        <div
+          className="absolute inset-0 bg-gradient-to-b from-ocean-950/30 via-ocean-900/50 to-ocean-950/92"
+          aria-hidden
+        />
+        <div
+          className="animate-drift-glow absolute -left-16 top-24 h-56 w-56 rounded-full bg-sea-300/30 blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="animate-drift-glow absolute -right-10 bottom-28 h-64 w-64 rounded-full bg-amber/25 blur-3xl [animation-delay:1.5s]"
+          aria-hidden
+        />
 
-        <form
-          className="mt-10 rounded-3xl bg-white/80 p-6 shadow-md backdrop-blur"
-          onSubmit={(e) => {
-            e.preventDefault()
-            addExplorer(name)
-          }}
-        >
-          <label className="block text-left text-sm font-bold text-ocean-900">
-            Explorer name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Maya"
-              className="mt-2 w-full rounded-2xl border-2 border-ocean-900/10 bg-sand-100 px-4 py-3 text-lg font-semibold outline-none focus:border-sea-300"
-              autoFocus
-            />
-          </label>
-          <button
-            type="submit"
-            className="mt-4 w-full rounded-2xl bg-coral py-3.5 text-lg font-extrabold text-white shadow-md"
+        <div className="relative z-10 mx-auto flex h-full max-w-2xl flex-col justify-end px-4 pb-10 pt-14 sm:justify-center sm:pb-16 sm:pt-20">
+          <motion.div
+            initial={{ opacity: 0, y: 22 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, ease: 'easeOut' }}
+            className="text-center"
           >
-            Start exploring
-          </button>
-        </form>
-      </div>
+            <motion.p
+              className="brand-title animate-title-bounce mx-auto text-[clamp(3.4rem,14vw,6rem)]"
+              initial={{ opacity: 0, scale: 0.88 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.12, type: 'spring', stiffness: 160, damping: 14 }}
+            >
+              Atlas Daily
+            </motion.p>
+            <h1 className="mt-4 font-display text-2xl leading-snug text-sand-100 sm:text-3xl">
+              Ten minutes to master the map
+            </h1>
+            <p className="mx-auto mt-3 max-w-md text-base font-semibold text-sand-200/90 sm:text-lg">
+              States, capitals, continents, oceans, and more — one short
+              adventure a day.
+            </p>
+          </motion.div>
+
+          <motion.form
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22, duration: 0.45 }}
+            className="mt-8 rounded-[1.75rem] border border-white/25 bg-white/95 p-5 shadow-xl backdrop-blur-md sm:p-6"
+            onSubmit={(e) => {
+              e.preventDefault()
+              addExplorer(name)
+            }}
+          >
+            <label className="block text-left text-sm font-extrabold text-ocean-900">
+              Explorer name
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Maya"
+                className="mt-2 w-full rounded-2xl border-2 border-ocean-900/10 bg-sand-100 px-4 py-3 text-lg font-semibold text-ocean-950 outline-none focus:border-sea-300"
+                autoFocus
+              />
+            </label>
+            <button
+              type="submit"
+              className="mt-4 w-full rounded-2xl bg-coral py-3.5 text-lg font-extrabold text-white shadow-md transition hover:brightness-105"
+            >
+              Start exploring
+            </button>
+          </motion.form>
+        </div>
+      </section>
     )
   }
 
@@ -271,12 +298,3 @@ function AddExplorer() {
   )
 }
 
-function GlobeMark() {
-  return (
-    <svg width="40" height="40" viewBox="0 0 64 64" fill="none" aria-hidden>
-      <ellipse cx="32" cy="32" rx="18" ry="30" stroke="#7ED6C1" strokeWidth="3" />
-      <ellipse cx="32" cy="32" rx="30" ry="12" stroke="#F4A261" strokeWidth="3" />
-      <circle cx="32" cy="32" r="3.5" fill="#F4A261" />
-    </svg>
-  )
-}
