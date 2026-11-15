@@ -4,12 +4,15 @@ import { Home } from './components/Home'
 import { LessonPlayer } from './components/LessonPlayer'
 import { Progress } from './components/Progress'
 import { SectionReview } from './components/SectionReview'
+import { UnitPlacementChallenge } from './components/UnitPlacementChallenge'
+import { markPlacementCleared } from './lib/storage'
 
-type Screen = 'home' | 'lesson' | 'progress' | 'review'
+type Screen = 'home' | 'lesson' | 'progress' | 'review' | 'placement'
 
 function Shell() {
   const [screen, setScreen] = useState<Screen>('home')
   const [reviewUnitId, setReviewUnitId] = useState<string | null>(null)
+  const [placementUnitId, setPlacementUnitId] = useState<string | null>(null)
   const { active, updateExplorer } = useApp()
 
   const welcome = screen === 'home' && !active
@@ -32,6 +35,10 @@ function Shell() {
             explorer={active}
             onUpdate={updateExplorer}
             onExit={() => setScreen('progress')}
+            onStartPlacement={(unitId) => {
+              setPlacementUnitId(unitId)
+              setScreen('placement')
+            }}
           />
         </div>
       )}
@@ -49,6 +56,10 @@ function Shell() {
             setReviewUnitId(unitId)
             setScreen('review')
           }}
+          onOpenPlacement={(unitId) => {
+            setPlacementUnitId(unitId)
+            setScreen('placement')
+          }}
         />
       )}
       {screen === 'review' && reviewUnitId && (
@@ -56,6 +67,20 @@ function Shell() {
           unitId={reviewUnitId}
           onBack={() => setScreen('progress')}
         />
+      )}
+      {screen === 'placement' && placementUnitId && active && (
+        <div className="px-2 py-8 sm:px-4">
+          <UnitPlacementChallenge
+            unitId={placementUnitId}
+            explorerName={active.name}
+            onExit={() => setScreen('progress')}
+            onComplete={() => {
+              updateExplorer(markPlacementCleared(active, placementUnitId))
+              setPlacementUnitId(null)
+              setScreen('progress')
+            }}
+          />
+        </div>
       )}
     </main>
   )

@@ -1,15 +1,26 @@
 import { UNITS, factsForUnit, formatPopulation } from '../data/curriculum'
 import { useApp } from '../state/AppContext'
 import { masteryLabel } from '../lib/srs'
-import { isUnitUnlocked, overallMastery, unitProgress } from '../lib/storage'
+import {
+  isUnitUnlocked,
+  overallMastery,
+  unitProgress,
+  unitReadyForPlacement,
+} from '../lib/storage'
 
 type Props = {
   onBack: () => void
   onStartLesson: () => void
   onOpenReview: (unitId: string) => void
+  onOpenPlacement: (unitId: string) => void
 }
 
-export function Progress({ onBack, onStartLesson, onOpenReview }: Props) {
+export function Progress({
+  onBack,
+  onStartLesson,
+  onOpenReview,
+  onOpenPlacement,
+}: Props) {
   const { active, resetProgress } = useApp()
   if (!active) return null
 
@@ -118,7 +129,16 @@ export function Progress({ onBack, onStartLesson, onOpenReview }: Props) {
                       )
                     })}
                   </ul>
-                  <div className="mt-4">
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {unitReadyForPlacement(active, unit.id) && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenPlacement(unit.id)}
+                        className="rounded-2xl bg-coral px-4 py-2.5 text-sm font-extrabold text-white"
+                      >
+                        Unlock next · place on map
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => onOpenReview(unit.id)}
@@ -126,10 +146,12 @@ export function Progress({ onBack, onStartLesson, onOpenReview }: Props) {
                     >
                       Final review · worksheet
                     </button>
-                    <p className="mt-2 text-xs font-semibold text-ocean-700">
-                      Fill-in blanks with a word bank — on screen or print.
-                    </p>
                   </div>
+                  <p className="mt-2 text-xs font-semibold text-ocean-700">
+                    {unitReadyForPlacement(active, unit.id)
+                      ? 'Drag each state and capital onto the map to open the next section.'
+                      : 'Fill-in blanks with a word bank — on screen or print.'}
+                  </p>
                 </>
               )}
             </section>

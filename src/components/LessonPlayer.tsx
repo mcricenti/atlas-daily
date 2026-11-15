@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ensureCard, recordSessionComplete, type Explorer } from '../lib/storage'
+import {
+  ensureCard,
+  recordSessionComplete,
+  unitReadyForPlacement,
+  type Explorer,
+} from '../lib/storage'
 import { buildDailySession, sessionMeta } from '../lib/session'
 import { reviewCard, type Grade } from '../lib/srs'
 import { formatPopulation } from '../data/curriculum'
@@ -10,9 +15,15 @@ type Props = {
   explorer: Explorer
   onUpdate: (explorer: Explorer) => void
   onExit: () => void
+  onStartPlacement?: (unitId: string) => void
 }
 
-export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
+export function LessonPlayer({
+  explorer,
+  onUpdate,
+  onExit,
+  onStartPlacement,
+}: Props) {
   const steps = useMemo(() => buildDailySession(explorer), [explorer.id])
   const meta = sessionMeta()
   const [index, setIndex] = useState(0)
@@ -122,6 +133,7 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
 
   if (done) {
     const accuracy = answered ? Math.round((correctCount / answered) * 100) : 100
+    const needsPlacement = unitReadyForPlacement(working)
     return (
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -142,19 +154,44 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
           <Stat label="Accuracy" value={`${accuracy}%`} />
           <Stat label="Coins" value={`+5`} />
         </div>
-        <button
-          type="button"
-          onClick={onExit}
-          className="mt-8 w-full rounded-2xl bg-coral px-5 py-3.5 text-lg font-extrabold text-white shadow-md transition hover:brightness-105"
-        >
-          See my progress
-        </button>
+        {needsPlacement && onStartPlacement ? (
+          <>
+            <p className="mt-6 text-sm font-semibold text-ocean-800">
+              This section is ready — drag each state and capital onto the map
+              to unlock the next one.
+            </p>
+            <button
+              type="button"
+              onClick={() => onStartPlacement(working.currentUnitId)}
+              className="mt-4 w-full rounded-2xl bg-coral px-5 py-3.5 text-lg font-extrabold text-white shadow-md transition hover:brightness-105"
+            >
+              Place states &amp; capitals
+            </button>
+            <button
+              type="button"
+              onClick={onExit}
+              className="mt-3 w-full rounded-2xl bg-ocean-900/10 px-5 py-3 text-sm font-bold text-ocean-900"
+            >
+              Later — see progress
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={onExit}
+            className="mt-8 w-full rounded-2xl bg-coral px-5 py-3.5 text-lg font-extrabold text-white shadow-md transition hover:brightness-105"
+          >
+            See my progress
+          </button>
+        )}
       </motion.div>
     )
   }
 
+  const mapWide = step.kind === 'map' || step.kind === 'teach'
+
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className={`mx-auto ${mapWide ? 'max-w-5xl' : 'max-w-2xl'}`}>
       <div className="mb-4 flex items-center gap-3">
         <button
           type="button"
@@ -214,6 +251,9 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
                   highlightId={step.fact.id}
                   interactive={false}
                   disabled
+                  large
+                  focusNames={[step.fact.name]}
+                  labelMode="target"
                   onSelect={() => undefined}
                 />
               )}
@@ -290,6 +330,9 @@ export function LessonPlayer({ explorer, onUpdate, onExit }: Props) {
                 onSelect={onMapSelect}
                 feedback={feedback}
                 selectedId={selectedId}
+                large
+                labelMode="options"
+                focusNames={step.mapOptions.map((f) => f.name)}
               />
               {feedback === 'wrong' && (
                 <p className="mt-3 text-center font-bold text-coral">

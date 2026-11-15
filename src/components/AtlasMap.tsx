@@ -21,6 +21,12 @@ type Props = {
   onSelect: (fact: GeoFact) => void
   feedback?: 'correct' | 'wrong' | null
   selectedId?: string | null
+  /** Taller map for kid-friendly tapping */
+  large?: boolean
+  /** Zoom Albers USA to these state names (e.g. unit options) */
+  focusNames?: string[]
+  /** Which capital/state labels to draw */
+  labelMode?: 'all' | 'options' | 'target' | 'none'
 }
 
 const WIDTH = 960
@@ -111,11 +117,28 @@ function UsStatesMap({
   onSelect,
   feedback,
   selectedId,
+  large = false,
+  focusNames,
+  labelMode,
 }: Props) {
   const gradId = useId()
   const canTap = interactive && !disabled
   const [topo, setTopo] = useState<Topology | null>(null)
   const [loadError, setLoadError] = useState(false)
+
+  const optionIds = useMemo(() => new Set(options.map((o) => o.id)), [options])
+  const optionNames = useMemo(
+    () => new Set(options.map((o) => o.name)),
+    [options],
+  )
+  const resolvedFocus = useMemo(() => {
+    if (focusNames?.length) return focusNames
+    if (interactive && options.length) return options.map((o) => o.name)
+    const target = options.find((o) => o.id === targetId) ?? options[0]
+    return target ? [target.name] : []
+  }, [focusNames, interactive, options, targetId])
+  const resolvedLabels =
+    labelMode ?? (interactive ? 'options' : large ? 'target' : 'all')
 
   useEffect(() => {
     let cancelled = false
@@ -135,13 +158,16 @@ function UsStatesMap({
     }
   }, [])
 
-  const optionIds = useMemo(() => new Set(options.map((o) => o.id)), [options])
-
   const { landPath, statePaths, pins } = useMemo(() => {
     if (!topo) {
       return {
         landPath: '',
-        statePaths: [] as { id: string; d: string; name: string }[],
+        statePaths: [] as {
+          id: string
+          d: string
+          name: string
+          isFocus: boolean
+        }[],
         pins: [] as Pin[],
       }
     }
@@ -151,7 +177,29 @@ function UsStatesMap({
       (topo.objects as { states: Topology['objects'][string] }).states,
     ) as FeatureCollection<Geometry>
 
-    const projection = geoAlbersUsa().fitSize([WIDTH, HEIGHT], states)
+    const focusSet = new Set(resolvedFocus)
+    const focusFeatures = states.features.filter((f) => {
+      const name =
+        (f.properties as { name?: string } | null)?.name ?? String(f.id)
+      return focusSet.has(name)
+    })
+
+    const projection = geoAlbersUsa()
+    if (focusFeatures.length >= 1) {
+      projection.fitExtent(
+        [
+          [36, 28],
+          [WIDTH - 36, HEIGHT - 48],
+        ],
+        {
+          type: 'FeatureCollection',
+          features: focusFeatures,
+        } as FeatureCollection<Geometry>,
+      )
+    } else {
+      projection.fitSize([WIDTH, HEIGHT], states)
+    }
+
     const path = geoPath(projection)
     const land = states.features
       .map((f) => path(f))
@@ -164,9 +212,19 @@ function UsStatesMap({
         if (!d) return null
         const name =
           (f.properties as { name?: string } | null)?.name ?? String(f.id)
-        return { id: String(f.id), d, name }
+        return {
+          id: String(f.id),
+          d,
+          name,
+          isFocus: focusSet.size === 0 || focusSet.has(name),
+        }
       })
-      .filter(Boolean) as { id: string; d: string; name: string }[]
+      .filter(Boolean) as {
+      id: string
+      d: string
+      name: string
+      isFocus: boolean
+    }[]
 
     const nextPins: Pin[] = []
     for (const [id, coord] of Object.entries(CAPITAL_COORDS)) {
@@ -193,7 +251,14 @@ function UsStatesMap({
     }
 
     return { landPath: land, statePaths: paths, pins: nextPins }
-  }, [topo])
+  }, [topo, resolvedFocus])
+
+  const nameToFact = useMemo(() => {
+    const map = new Map<string, GeoFact>()
+    for (const pin of pins) map.set(pin.fact.name, pin.fact)
+    for (const fact of options) map.set(fact.name, fact)
+    return map
+  }, [pins, options])
 
   if (loadError) {
     return (
@@ -212,7 +277,11 @@ function UsStatesMap({
 
   if (!topo) {
     return (
-      <div className="flex h-[280px] items-center justify-center rounded-3xl bg-[#0b3d4a] text-sm font-bold text-[#b8ebe0]">
+      <div
+        className={`flex items-center justify-center rounded-3xl bg-[#0b3d4a] text-sm font-bold text-[#b8ebe0] ${
+          large ? 'h-[min(72vh,720px)]' : 'h-[280px]'
+        }`}
+      >
         Loading United States map…
       </div>
     )
@@ -221,13 +290,24 @@ function UsStatesMap({
   const targetFact = pins.find((p) => p.fact.id === targetId)?.fact
   const targetStateName = targetFact?.name
 
+  function shouldShowLabel(pin: Pin) {
+    if (resolvedLabels === 'none') return false
+    if (resolvedLabels === 'all') return true
+    if (resolvedLabels === 'target') {
+      return pin.fact.id === targetId || pin.fact.id === highlightId
+    }
+    return optionIds.has(pin.fact.id)
+  }
+
   return (
     <div className="relative overflow-hidden rounded-3xl border border-[#0b3d4a]/15 shadow-inner">
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="h-auto w-full max-h-[440px] bg-[#0b3d4a]"
+        className={`h-auto w-full bg-[#0b3d4a] ${
+          large ? 'max-h-[min(72vh,760px)]' : 'max-h-[440px]'
+        }`}
         role="img"
-        aria-label="United States map with all state names and capitals"
+        aria-label="United States map"
       >
         <defs>
           <filter id={`${gradId}-shadow`} x="-20%" y="-20%" width="140%" height="140%">
@@ -238,13 +318,36 @@ function UsStatesMap({
         <rect width={WIDTH} height={HEIGHT} fill="#0b3d4a" />
         {statePaths.map((s) => {
           const isTarget = targetStateName === s.name
+          const isOption = optionNames.has(s.name)
+          const optionFact = nameToFact.get(s.name)
+          const dimmed = resolvedFocus.length > 0 && !s.isFocus
           return (
             <path
               key={s.id}
               d={s.d}
-              fill={isTarget ? '#e8d4b8' : '#d8c3a5'}
-              stroke="#8d7355"
-              strokeWidth={0.7}
+              fill={
+                isTarget
+                  ? '#e8d4b8'
+                  : isOption && canTap
+                    ? '#efe0c8'
+                    : dimmed
+                      ? '#8a7a66'
+                      : '#d8c3a5'
+              }
+              stroke={isOption && canTap ? '#0b3d4a' : '#8d7355'}
+              strokeWidth={isOption && canTap ? 1.6 : dimmed ? 0.4 : 0.7}
+              opacity={dimmed ? 0.35 : 1}
+              style={
+                canTap && isOption && optionFact
+                  ? { cursor: 'pointer', touchAction: 'manipulation' }
+                  : undefined
+              }
+              onPointerUp={(e) => {
+                if (!canTap || !isOption || !optionFact) return
+                e.preventDefault()
+                e.stopPropagation()
+                onSelect(optionFact)
+              }}
             />
           )
         })}
@@ -264,6 +367,8 @@ function UsStatesMap({
             (isSelected || pin.fact.id === targetId)
           const isOption = optionIds.has(pin.fact.id)
           const emphasize = isHighlight || isSelected || correct || wrong
+          const showLabel = shouldShowLabel(pin)
+          if (!showLabel && !isOption && !emphasize) return null
 
           const fill = correct
             ? '#2f6f4e'
@@ -277,28 +382,32 @@ function UsStatesMap({
           const labelAbove = pin.y > 90
           const labelY = emphasize
             ? labelAbove
-              ? pin.y - 26
-              : pin.y + 36
+              ? pin.y - 28
+              : pin.y + 38
             : labelAbove
-              ? pin.y - 16
-              : pin.y + 18
+              ? pin.y - 18
+              : pin.y + 20
 
           return (
             <g key={pin.fact.id} filter={`url(#${gradId}-shadow)`}>
-              {emphasize && (
+              {(emphasize || isOption) && (
                 <circle
                   cx={pin.x}
                   cy={pin.y}
-                  r={16}
+                  r={emphasize ? 18 : 12}
                   fill={
-                    correct ? 'rgba(47,111,78,0.28)' : 'rgba(224,122,95,0.3)'
+                    correct
+                      ? 'rgba(47,111,78,0.28)'
+                      : isOption
+                        ? 'rgba(126,214,193,0.22)'
+                        : 'rgba(224,122,95,0.3)'
                   }
                 />
               )}
               <circle
                 cx={pin.x}
                 cy={pin.y}
-                r={emphasize ? 8 : 4.5}
+                r={emphasize ? 9 : isOption ? 7 : 4.5}
                 fill={fill}
                 stroke="#f7f4ee"
                 strokeWidth={emphasize ? 2.2 : 1.2}
@@ -307,82 +416,83 @@ function UsStatesMap({
                 <circle cx={pin.x} cy={pin.y} r={2.5} fill="#f7f4ee" />
               )}
 
-              {emphasize ? (
-                <g transform={`translate(${labelX}, ${labelY})`}>
-                  <rect
-                    x={-70}
-                    y={-22}
-                    width={140}
-                    height={40}
-                    rx={8}
-                    fill="rgba(247,244,238,0.97)"
-                    stroke="rgba(11,61,74,0.22)"
-                  />
-                  <text
-                    textAnchor="middle"
-                    y={-4}
-                    style={{
-                      fontFamily: 'Nunito, sans-serif',
-                      fontSize: 12,
-                      fontWeight: 800,
-                      fill: '#0b3d4a',
-                    }}
-                  >
-                    {pin.labelPrimary}
-                  </text>
-                  <text
-                    textAnchor="middle"
-                    y={12}
-                    style={{
-                      fontFamily: 'Nunito, sans-serif',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      fill: '#176b7a',
-                    }}
-                  >
-                    {pin.labelSecondary}
-                  </text>
-                </g>
-              ) : (
-                <g transform={`translate(${labelX}, ${labelY})`}>
-                  <text
-                    textAnchor="middle"
-                    y={0}
-                    style={{
-                      fontFamily: 'Nunito, sans-serif',
-                      fontSize: 8.5,
-                      fontWeight: 800,
-                      fill: '#f7f4ee',
-                      paintOrder: 'stroke',
-                      stroke: 'rgba(6,38,47,0.85)',
-                      strokeWidth: 2.5,
-                    }}
-                  >
-                    {pin.labelPrimary}
-                  </text>
-                  <text
-                    textAnchor="middle"
-                    y={10}
-                    style={{
-                      fontFamily: 'Nunito, sans-serif',
-                      fontSize: 7.5,
-                      fontWeight: 700,
-                      fill: '#b8ebe0',
-                      paintOrder: 'stroke',
-                      stroke: 'rgba(6,38,47,0.8)',
-                      strokeWidth: 2.2,
-                    }}
-                  >
-                    {pin.labelSecondary}
-                  </text>
-                </g>
-              )}
+              {showLabel &&
+                (emphasize ? (
+                  <g transform={`translate(${labelX}, ${labelY})`}>
+                    <rect
+                      x={-74}
+                      y={-22}
+                      width={148}
+                      height={42}
+                      rx={8}
+                      fill="rgba(247,244,238,0.97)"
+                      stroke="rgba(11,61,74,0.22)"
+                    />
+                    <text
+                      textAnchor="middle"
+                      y={-4}
+                      style={{
+                        fontFamily: 'Nunito, sans-serif',
+                        fontSize: large ? 14 : 12,
+                        fontWeight: 800,
+                        fill: '#0b3d4a',
+                      }}
+                    >
+                      {pin.labelPrimary}
+                    </text>
+                    <text
+                      textAnchor="middle"
+                      y={14}
+                      style={{
+                        fontFamily: 'Nunito, sans-serif',
+                        fontSize: large ? 12 : 11,
+                        fontWeight: 700,
+                        fill: '#176b7a',
+                      }}
+                    >
+                      {pin.labelSecondary}
+                    </text>
+                  </g>
+                ) : (
+                  <g transform={`translate(${labelX}, ${labelY})`}>
+                    <text
+                      textAnchor="middle"
+                      y={0}
+                      style={{
+                        fontFamily: 'Nunito, sans-serif',
+                        fontSize: large ? 12 : 9.5,
+                        fontWeight: 800,
+                        fill: '#f7f4ee',
+                        paintOrder: 'stroke',
+                        stroke: 'rgba(6,38,47,0.85)',
+                        strokeWidth: 2.5,
+                      }}
+                    >
+                      {pin.labelPrimary}
+                    </text>
+                    <text
+                      textAnchor="middle"
+                      y={12}
+                      style={{
+                        fontFamily: 'Nunito, sans-serif',
+                        fontSize: large ? 11 : 8.5,
+                        fontWeight: 700,
+                        fill: '#b8ebe0',
+                        paintOrder: 'stroke',
+                        stroke: 'rgba(6,38,47,0.8)',
+                        strokeWidth: 2.2,
+                      }}
+                    >
+                      {pin.labelSecondary}
+                    </text>
+                  </g>
+                ))}
 
               {canTap && isOption && (
                 <circle
                   cx={pin.x}
                   cy={pin.y}
-                  r={26}
+                  r={large ? 36 : 28}
                   fill="transparent"
                   style={{ cursor: 'pointer' }}
                   onPointerUp={(e) => {
@@ -402,10 +512,10 @@ function UsStatesMap({
       </svg>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#06262f]/55 to-transparent px-4 pb-3 pt-10">
-        <p className="text-center text-xs font-semibold tracking-wide text-[#b8ebe0]">
+        <p className="text-center text-xs font-semibold tracking-wide text-[#b8ebe0] sm:text-sm">
           {canTap
-            ? 'All 50 states & capitals shown — tap the correct capital pin'
-            : 'All 50 states and capitals on the United States'}
+            ? 'Zoomed region — tap the correct state or capital pin'
+            : 'United States map'}
         </p>
       </div>
     </div>
