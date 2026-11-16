@@ -111,7 +111,11 @@ export function buildDailySession(explorer: Explorer): LessonStep[] {
 function makeTeach(fact: GeoFact): LessonStep {
   const detail = fact.capital
     ? `The capital of ${fact.name} is ${fact.capital}.`
-    : `${fact.name} is a ${fact.kind} in ${fact.region}.`
+    : fact.kind === 'mountain'
+      ? `${fact.name} is a famous mountain in ${fact.region}.`
+      : fact.kind === 'landmark'
+        ? `${fact.name} is an important landmark in ${fact.region}.`
+        : `${fact.name} is a ${fact.kind} in ${fact.region}.`
   return {
     id: `teach-${fact.id}-${Math.random().toString(36).slice(2, 7)}`,
     kind: 'teach',

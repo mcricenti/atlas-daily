@@ -9,12 +9,14 @@ A geography learning app for kids built around **direct instruction** and **spac
 Progressive path:
 
 1. U.S. states & capitals (by region)
-2. North America countries & capitals
-3. South America countries & capitals
-4. Seven continents & five oceans
-5. Major rivers
-6. Europe countries & capitals
-7. Africa countries & capitals
+2. Seven continents & five oceans
+3. North America countries & capitals
+4. South America countries & capitals
+5. Europe countries & capitals
+6. Africa countries & capitals
+7. Asia countries & capitals
+8. Oceania & rest-of-world countries & capitals
+9. Rivers, mountains & landmarks
 
 ## How a lesson works
 

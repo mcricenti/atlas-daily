@@ -4,6 +4,8 @@ export type FactKind =
   | 'continent'
   | 'ocean'
   | 'river'
+  | 'mountain'
+  | 'landmark'
 
 export type GeoFact = {
   id: string
@@ -70,52 +72,68 @@ export const UNITS: Unit[] = [
     unlockAfter: 'us-southwest',
   },
   {
+    id: 'world-basics',
+    title: 'Continents & Oceans',
+    subtitle: 'The seven continents and five oceans',
+    order: 6,
+    theme: 'World',
+    unlockAfter: 'us-west',
+  },
+  {
     id: 'north-america',
     title: 'North America',
     subtitle: 'Countries & capitals of our continent',
-    order: 6,
+    order: 7,
     theme: 'Continents',
-    unlockAfter: 'us-west',
+    unlockAfter: 'world-basics',
   },
   {
     id: 'south-america',
     title: 'South America',
     subtitle: 'Andes, Amazon, and Atlantic coasts',
-    order: 7,
+    order: 8,
     theme: 'Continents',
     unlockAfter: 'north-america',
-  },
-  {
-    id: 'world-basics',
-    title: 'Continents & Oceans',
-    subtitle: 'The seven continents and five oceans',
-    order: 8,
-    theme: 'World',
-    unlockAfter: 'south-america',
-  },
-  {
-    id: 'major-rivers',
-    title: 'Major Rivers',
-    subtitle: 'The waterways that shaped nations',
-    order: 9,
-    theme: 'World',
-    unlockAfter: 'world-basics',
   },
   {
     id: 'europe',
     title: 'Europe',
     subtitle: 'Countries & capitals across Europe',
-    order: 10,
+    order: 9,
     theme: 'Continents',
-    unlockAfter: 'major-rivers',
+    unlockAfter: 'south-america',
   },
   {
     id: 'africa',
     title: 'Africa',
     subtitle: 'Countries & capitals across Africa',
-    order: 11,
+    order: 10,
     theme: 'Continents',
     unlockAfter: 'europe',
+  },
+  {
+    id: 'asia',
+    title: 'Asia',
+    subtitle: 'Countries & capitals across Asia',
+    order: 11,
+    theme: 'Continents',
+    unlockAfter: 'africa',
+  },
+  {
+    id: 'world-rest',
+    title: 'Oceania & Beyond',
+    subtitle: 'Australia, Pacific islands, and more capitals',
+    order: 12,
+    theme: 'World',
+    unlockAfter: 'asia',
+  },
+  {
+    id: 'major-rivers',
+    title: 'Rivers, Mountains & Landmarks',
+    subtitle: 'Great rivers, peaks, and famous places on Earth',
+    order: 13,
+    theme: 'World',
+    unlockAfter: 'world-rest',
   },
 ]
 
