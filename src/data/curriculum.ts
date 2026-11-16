@@ -4,8 +4,14 @@ import { UNITS, type GeoFact, type Unit } from './curriculum-types'
 import { FACTS_US } from './curriculum-facts-us'
 import { FACTS_INTL_A } from './curriculum-facts-intl-a'
 import { FACTS_INTL_B } from './curriculum-facts-intl-b'
+import { FACTS_ASIA_WORLD } from './curriculum-facts-asia-world'
 
-export const FACTS: GeoFact[] = [...FACTS_US, ...FACTS_INTL_A, ...FACTS_INTL_B]
+export const FACTS: GeoFact[] = [
+  ...FACTS_US,
+  ...FACTS_INTL_A,
+  ...FACTS_INTL_B,
+  ...FACTS_ASIA_WORLD,
+]
 
 export function factsForUnit(unitId: string): GeoFact[] {
   return FACTS.filter((f) => f.unitId === unitId)

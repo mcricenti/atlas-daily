@@ -36,7 +36,16 @@ function placeLabelFor(facts: GeoFact[]): string {
   if (kinds.has('country')) return 'Country'
   if (kinds.has('continent')) return 'Continent'
   if (kinds.has('ocean')) return 'Ocean'
-  if (kinds.has('river')) return 'River'
+  if (
+    kinds.has('river') ||
+    kinds.has('mountain') ||
+    kinds.has('landmark')
+  ) {
+    if (kinds.size === 1 && kinds.has('river')) return 'River'
+    if (kinds.size === 1 && kinds.has('mountain')) return 'Mountain'
+    if (kinds.size === 1 && kinds.has('landmark')) return 'Landmark'
+    return 'Landform'
+  }
   return 'Place'
 }
 
