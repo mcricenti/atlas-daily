@@ -16,6 +16,7 @@ import {
   isUsFact,
   linePath,
   loadTopo,
+  neighborShapes,
   pointForFact,
   shapeForFact,
   toScreen,
@@ -31,7 +32,7 @@ import {
   saveVoicePref,
   speak,
 } from '../lib/narrator'
-import { buildTour, sceneDuration, type TourCameraName } from '../lib/tour'
+import { buildTour, sceneDuration, tourContextFor, type TourCameraName } from '../lib/tour'
 
 type Props = {
   fact: GeoFact
@@ -113,11 +114,7 @@ function buildGeo(atlas: Atlas, fact: GeoFact): Geo {
     }
   }
 
-  const neighbors = shape
-    ? ((atlas.neighbors.get(shape.key) ?? [])
-        .map((k) => atlas.byKey.get(k))
-        .filter(Boolean) as Shape[]).sort((a, b) => b.area - a.area)
-    : []
+  const neighbors = neighborShapes(atlas, fact)
 
   let region: Camera
   let close: Camera
@@ -224,10 +221,7 @@ export function PlaceTour({ fact, onFinished }: Props) {
 
   const scenes = useMemo(
     () =>
-      buildTour(fact, {
-        neighborNames: geo?.neighbors.map((n) => n.label) ?? [],
-        hasShape: Boolean(geo?.shape) || fact.kind !== 'country',
-      }),
+      geo ? buildTour(fact, tourContextFor(geo.atlas, fact)) : buildTour(fact, { neighborNames: [], hasShape: true }),
     [fact, geo],
   )
 

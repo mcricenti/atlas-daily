@@ -278,6 +278,17 @@ export function buildAtlas(topo: Topology, kind: MapKind, centerLon = 0): Atlas 
   return atlas
 }
 
+/** Shapes that share a border with this place, biggest first. */
+export function neighborShapes(atlas: Atlas, fact: GeoFact): Shape[] {
+  const shape = shapeForFact(atlas, fact)
+  if (!shape) return []
+  return (
+    (atlas.neighbors.get(shape.key) ?? [])
+      .map((k) => atlas.byKey.get(k))
+      .filter(Boolean) as Shape[]
+  ).sort((a, b) => b.area - a.area)
+}
+
 // ── Places ───────────────────────────────────────────────────────
 
 /** Where the capital (or the place itself, for non-countries) sits on the map. */

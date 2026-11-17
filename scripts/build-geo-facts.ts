@@ -4,12 +4,13 @@
  *   npx tsx scripts/build-geo-facts.ts
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { feature } from 'topojson-client'
 import { geoArea } from 'd3-geo'
 import { FACTS } from '../src/data/curriculum'
 import { buildAtlas, isUsFact, shapeKeyForFact } from '../src/lib/geoData'
 
-const root = new URL('..', import.meta.url).pathname
+const root = fileURLToPath(new URL('..', import.meta.url)) + '/'
 const read = (p: string) => JSON.parse(readFileSync(root + p, 'utf8'))
 const topo = { us: read('public/geo/states-10m.json'), world: read('public/geo/countries-50m.json') }
 

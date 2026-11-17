@@ -1,5 +1,6 @@
 import { FACTS, formatPopulation, type GeoFact } from '../data/curriculum'
 import { FUN_FACTS } from '../data/funFacts'
+import { neighborShapes, shapeForFact, type Atlas } from './geoData'
 import { flagUrl } from '../data/flags'
 import { MEMORY_HOOKS } from '../data/memoryHooks'
 
@@ -109,6 +110,19 @@ export type TourContext = {
   neighborNames: string[]
   /** True when the place has its own outline on the map */
   hasShape: boolean
+}
+
+/** What the tour needs to know from the map. Shared with the voice-recording script. */
+export function tourContextFor(atlas: Atlas, fact: GeoFact): TourContext {
+  return {
+    neighborNames: neighborShapes(atlas, fact).map((n) => n.label),
+    hasShape: Boolean(shapeForFact(atlas, fact)) || fact.kind !== 'country',
+  }
+}
+
+/** Every line the narrator says on this place's tour, in order. */
+export function narrationLines(fact: GeoFact, ctx: TourContext): string[] {
+  return buildTour(fact, ctx).map((s) => s.say ?? s.caption)
 }
 
 export function buildTour(fact: GeoFact, ctx: TourContext): TourScene[] {

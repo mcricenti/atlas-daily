@@ -27,5 +27,5 @@ export const ISO2: Record<string, string> = {
 
 export function flagUrl(factId: string): string | null {
   const code = ISO2[factId]
-  return code ? `${import.meta.env.BASE_URL}flags/${code}.svg` : null
+  return code ? `${import.meta.env?.BASE_URL ?? "/"}flags/${code}.svg` : null
 }

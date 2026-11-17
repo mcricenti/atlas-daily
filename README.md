@@ -48,6 +48,25 @@ Inspired by strong patterns from apps like Yonder, US States Trainer, Geo Touch,
 - **Memory tricks** for all 50 state capitals (`src/data/memoryHooks.ts`), shown in tours and after a miss.
 - **Flags** for every country (`public/flags`, from the MIT-licensed flag-icons project).
 
+### Narration in your own voice (MiniMax)
+
+Tours play recorded clips from `public/voice/` when they exist and fall back to the device voice otherwise.
+To record the narration (~1,140 lines, ~99k characters) in a MiniMax voice:
+
+1. Get an API key at https://platform.minimax.io (Account → API Keys) and add some balance.
+2. Create `.env.local` in the project folder (it is git-ignored):
+   ```
+   MINIMAX_API_KEY=...
+   MINIMAX_VOICE_ID=...
+   ```
+3. `npm install`, then:
+   - `npm run voice` — counts missing lines and estimates cost
+   - `npm run voice -- --voices` — lists voice IDs your key can use
+   - `npm run voice -- --clone recording.mp3 myvoice01` — clones a voice from a 10 s–5 min recording
+   - `npm run voice -- --sample` — records 3 lines to listen to
+   - `npm run voice -- --go` — records everything missing (safe to re-run; only new or changed lines)
+4. Commit `public/voice` and push; GitHub Pages redeploys with your voice.
+
 ### Grown-ups page
 
 Behind a simple multiplication gate on the home screen: places learned and mastered, an estimated
