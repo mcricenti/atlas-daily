@@ -23,7 +23,7 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
     return (
       <section className="relative isolate h-[100svh] max-h-[100svh] overflow-hidden">
         <img
-          src="/world-hero.jpg"
+          src={`${import.meta.env.BASE_URL}world-hero.jpg`}
           alt="Illustrated Earth from space"
           className="absolute inset-0 h-full w-full scale-105 object-cover object-[center_35%]"
           decoding="async"

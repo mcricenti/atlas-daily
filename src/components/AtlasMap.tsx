@@ -39,7 +39,7 @@ type Props = {
 
 const WIDTH = 960
 const HEIGHT = 600
-const STATES_TOPO_URL = '/geo/states-10m.json'
+const STATES_TOPO_URL = `${import.meta.env.BASE_URL}geo/states-10m.json`
 
 type Pin = {
   fact: GeoFact

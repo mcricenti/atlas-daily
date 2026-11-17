@@ -16,7 +16,7 @@ type Props = {
 
 const WIDTH = 960
 const HEIGHT = 620
-const STATES_TOPO_URL = '/geo/states-10m.json'
+const STATES_TOPO_URL = `${import.meta.env.BASE_URL}geo/states-10m.json`
 const CAPITAL_HIT_RADIUS = 48
 
 type Phase = 'state' | 'capital'

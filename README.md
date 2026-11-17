@@ -77,6 +77,9 @@ npm run deploy
 
 ### Live sites
 
+- **GitHub Pages (main site):** https://mcricenti.github.io/atlas-daily/ — rebuilt automatically on every push
+  to `main` by `.github/workflows/pages.yml`.
+
 - **Workers (latest preview):** https://atlas-daily.colossal-plough.workers.dev  
   Claim into your Cloudflare account (60‑minute window when freshly deployed): use the claim link from the latest deploy output / chat.
 - **Workers (earlier claimed):** https://atlas-daily.wirehaired-jingle.workers.dev — redeploy after claim/`wrangler login` to refresh.
