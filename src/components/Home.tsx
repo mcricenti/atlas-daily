@@ -144,9 +144,9 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
           <h2 className="relative mt-2 font-display text-3xl sm:text-4xl">
             {unit.subtitle}
           </h2>
-          <p className="relative mt-3 max-w-lg text-sand-200/90">
-            Learn a few new places (I do), practice together (we do), then locate
-            and recall on your own — with spaced review of what you already know.
+          <p className="relative mt-3 max-w-lg text-lg text-sand-200/90">
+            Watch a few quick map tours, then play to remember them. Places you
+            already know come back so they stick.
           </p>
           <div className="relative mt-6 flex flex-wrap gap-3">
             <button
@@ -183,7 +183,8 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-3 border-t border-white/10 bg-ocean-950/40">
+        <div className="grid grid-cols-4 border-t border-white/10 bg-ocean-950/40">
+          <MiniStat label="Streak" value={`${active.gentleStreak}d`} />
           <MiniStat label="Unit" value={`${progress.pct}%`} />
           <MiniStat label="Mastered" value={`${overall.mastered}`} />
           <MiniStat label="Coins" value={`${active.trailCoins}`} />
@@ -197,55 +198,98 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
             {overall.introduced}/{overall.total} introduced
           </p>
         </div>
-        <div className="space-y-3">
+        <ol className="relative space-y-3">
+          <span
+            className="absolute bottom-6 left-[1.6rem] top-6 border-l-[3px] border-dashed border-ocean-900/20"
+            aria-hidden
+          />
           {UNITS.map((u, i) => {
             const unlocked = isUnitUnlocked(active, u.id)
             const p = unitProgress(active, u.id)
             const current = u.id === active.currentUnitId
+            const complete = active.completedUnits.includes(u.id)
             return (
-              <motion.div
+              <motion.li
                 key={u.id}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.03 }}
-                className={`rounded-2xl border px-4 py-3 sm:px-5 sm:py-4 ${
-                  current
-                    ? 'border-amber bg-amber/15'
-                    : unlocked
-                      ? 'border-ocean-900/10 bg-white/70'
-                      : 'border-transparent bg-white/40 opacity-60'
-                }`}
+                className="relative flex items-stretch gap-3"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-ocean-700">
-                      {u.theme}
-                      {!unlocked && ' · locked'}
-                      {current && ' · current'}
-                    </p>
-                    <p className="font-extrabold text-ocean-950">{u.title}</p>
+                <span
+                  className={`z-10 mt-1.5 flex h-[3.25rem] w-[3.25rem] shrink-0 items-center justify-center rounded-full border-4 text-2xl shadow-sm ${
+                    current
+                      ? 'animate-pulse-ring border-amber bg-white'
+                      : complete
+                        ? 'border-sea-300 bg-white'
+                        : unlocked
+                          ? 'border-white bg-white'
+                          : 'border-white/70 bg-sand-200 grayscale'
+                  }`}
+                  aria-hidden
+                >
+                  {unlocked ? UNIT_ICONS[u.id] ?? '🗺️' : '🔒'}
+                </span>
+                <div
+                  className={`flex-1 rounded-2xl border px-4 py-3 sm:px-5 sm:py-4 ${
+                    current
+                      ? 'border-amber bg-amber/15 shadow-sm'
+                      : unlocked
+                        ? 'border-ocean-900/10 bg-white/70'
+                        : 'border-transparent bg-white/40 opacity-70'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-ocean-700">
+                        Stop {i + 1} · {u.theme}
+                        {current && ' · you are here'}
+                      </p>
+                      <p className="font-extrabold text-ocean-950">{u.title}</p>
+                      <p className="text-sm text-ocean-800/80">{u.subtitle}</p>
+                    </div>
+                    <div className="text-right text-sm font-bold text-ocean-800">
+                      {complete
+                        ? 'Complete ✓'
+                        : unlocked
+                          ? `${p.strong}/${p.total} strong`
+                          : 'Locked'}
+                    </div>
                   </div>
-                  <div className="text-right text-sm font-bold text-ocean-800">
-                    {unlocked ? `${p.strong}/${p.total} strong` : 'Complete prior unit'}
-                  </div>
+                  {unlocked && (
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-ocean-900/10">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-sea-300 to-amber"
+                        style={{ width: `${complete ? 100 : p.pct}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
-                {unlocked && (
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-ocean-900/10">
-                    <div
-                      className="h-full rounded-full bg-sea-300"
-                      style={{ width: `${p.pct}%` }}
-                    />
-                  </div>
-                )}
-              </motion.div>
+              </motion.li>
             )
           })}
-        </div>
+        </ol>
       </section>
 
       <AddExplorer />
     </div>
   )
+}
+
+const UNIT_ICONS: Record<string, string> = {
+  'us-northeast': '🦞',
+  'us-southeast': '🍑',
+  'us-midwest': '🌽',
+  'us-southwest': '🌵',
+  'us-west': '🏔️',
+  'world-basics': '🌍',
+  'north-america': '🍁',
+  'south-america': '🦜',
+  europe: '🏰',
+  africa: '🦁',
+  asia: '🐼',
+  'world-rest': '🦘',
+  'major-rivers': '🏞️',
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {

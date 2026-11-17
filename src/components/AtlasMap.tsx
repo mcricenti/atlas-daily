@@ -1,16 +1,24 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import { feature } from 'topojson-client'
-import {
-  geoAlbersUsa,
-  geoCentroid,
-  geoEquirectangular,
-  geoPath,
-} from 'd3-geo'
+import { geoAlbersUsa, geoEquirectangular, geoPath } from 'd3-geo'
 import type { Topology } from 'topojson-specification'
-import type { Feature, FeatureCollection, Geometry } from 'geojson'
+import type { FeatureCollection, Geometry } from 'geojson'
 import type { GeoFact } from '../data/curriculum'
 import { FACTS } from '../data/curriculum'
 import { CAPITAL_COORDS } from '../data/geo/capitalCoords'
+import { WORLD_PLACES } from '../data/geo/worldCoords'
+import {
+  FULL_CAMERA,
+  MAP_W,
+  anchorForFact,
+  boundsAround,
+  buildAtlas,
+  cameraFor,
+  cameraToViewBox,
+  loadTopo,
+  shapeForFact,
+  unionBounds,
+} from '../lib/geoData'
 
 type Props = {
   options: GeoFact[]
@@ -32,7 +40,6 @@ type Props = {
 const WIDTH = 960
 const HEIGHT = 600
 const STATES_TOPO_URL = '/geo/states-10m.json'
-const WORLD_TOPO_URL = '/geo/countries-110m.json'
 
 type Pin = {
   fact: GeoFact
@@ -42,59 +49,12 @@ type Pin = {
   labelSecondary?: string
 }
 
-type CountryLabel = {
-  id: string
-  name: string
-  x: number
-  y: number
-  area: number
-  fact?: GeoFact
-}
-
 function isUsState(fact: GeoFact) {
   return fact.kind === 'state' && fact.region === 'United States'
 }
 
 function factFromCapitalId(id: string): GeoFact | undefined {
   return FACTS.find((f) => f.id === id)
-}
-
-function normalizeCountryName(name: string) {
-  return name
-    .toLowerCase()
-    .replace(/\./g, '')
-    .replace(/&/g, 'and')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-const COUNTRY_ALIASES: Record<string, string> = {
-  'united states of america': 'united states',
-  usa: 'united states',
-  'dem rep congo': 'democratic republic of the congo',
-  'congo': 'republic of the congo',
-  'dominican rep': 'dominican republic',
-  'central african rep': 'central african republic',
-  "cote d'ivoire": 'ivory coast',
-  "côte d'ivoire": 'ivory coast',
-  czechia: 'czech republic',
-  'bosnia and herz': 'bosnia and herzegovina',
-  'eq guinea': 'equatorial guinea',
-  's sudan': 'south sudan',
-  'solomon is': 'solomon islands',
-  'falkland is': 'falkland islands',
-}
-
-function countryMatchKey(name: string) {
-  const n = normalizeCountryName(name)
-  return COUNTRY_ALIASES[n] ?? n
-}
-
-function findCountryFact(name: string): GeoFact | undefined {
-  const key = countryMatchKey(name)
-  return FACTS.find(
-    (f) => f.kind === 'country' && countryMatchKey(f.name) === key,
-  )
 }
 
 export function AtlasMap(props: Props) {
@@ -522,6 +482,26 @@ function UsStatesMap({
   )
 }
 
+/** Pick a map centre so far-apart Pacific places are not split across the edges. */
+function centerLonForOptions(options: GeoFact[]): number {
+  let sx = 0
+  let sy = 0
+  let n = 0
+  for (const fact of options) {
+    const place = WORLD_PLACES[fact.id]
+    if (!place) continue
+    const rad = (place.at[0] * Math.PI) / 180
+    sx += Math.cos(rad)
+    sy += Math.sin(rad)
+    n += 1
+  }
+  if (!n) return 0
+  const spread = Math.hypot(sx, sy) / n
+  const mean = (Math.atan2(sy, sx) * 180) / Math.PI
+  if (spread < 0.6 || Math.abs(mean) < 75) return 0
+  return Math.round(mean / 30) * 30
+}
+
 function WorldAtlasMap({
   options,
   targetId,
@@ -531,6 +511,7 @@ function WorldAtlasMap({
   onSelect,
   feedback,
   selectedId,
+  large = false,
 }: Props) {
   const gradId = useId()
   const canTap = interactive && !disabled
@@ -539,12 +520,8 @@ function WorldAtlasMap({
 
   useEffect(() => {
     let cancelled = false
-    fetch(WORLD_TOPO_URL)
-      .then((r) => {
-        if (!r.ok) throw new Error('world map fetch failed')
-        return r.json()
-      })
-      .then((data: Topology) => {
+    loadTopo('world')
+      .then((data) => {
         if (!cancelled) setTopo(data)
       })
       .catch(() => {
@@ -555,104 +532,36 @@ function WorldAtlasMap({
     }
   }, [])
 
-  const optionById = useMemo(() => {
-    const map = new Map(options.map((o) => [o.id, o]))
-    return map
-  }, [options])
-
-  const { countryPaths, labels, pins, projectionReady } = useMemo(() => {
-    if (!topo) {
-      return {
-        countryPaths: [] as {
-          id: string
-          d: string
-          name: string
-          fact?: GeoFact
-        }[],
-        labels: [] as CountryLabel[],
-        pins: [] as Pin[],
-        projectionReady: false,
-      }
-    }
-
-    const countries = feature(
-      topo,
-      (topo.objects as { countries: Topology['objects'][string] }).countries,
-    ) as FeatureCollection<Geometry>
-
-    const projection = geoEquirectangular().fitExtent(
-      [
-        [12, 24],
-        [WIDTH - 12, HEIGHT - 36],
-      ],
-      countries,
+  const view = useMemo(() => {
+    if (!topo) return null
+    const atlas = buildAtlas(topo, 'world', centerLonForOptions(options))
+    const spots = options
+      .map((fact) => ({
+        fact,
+        shape: shapeForFact(atlas, fact),
+        anchor: anchorForFact(atlas, fact),
+      }))
+      .filter(
+        (s): s is typeof s & { anchor: [number, number] } => Boolean(s.anchor),
+      )
+    const cam = spots.length
+      ? cameraFor(
+          unionBounds(
+            spots.map((s) =>
+              s.shape && s.fact.kind === 'country'
+                ? s.shape.bounds
+                : boundsAround(s.anchor, s.fact.kind === 'country' ? 24 : 70),
+            ),
+          ),
+          0.16,
+          240,
+        )
+      : FULL_CAMERA
+    const factByShape = new Map(
+      spots.filter((s) => s.shape).map((s) => [s.shape!.key, s.fact]),
     )
-    const path = geoPath(projection)
-
-    const nextPaths: {
-      id: string
-      d: string
-      name: string
-      fact?: GeoFact
-    }[] = []
-    const nextLabels: CountryLabel[] = []
-
-    for (const f of countries.features) {
-      const d = path(f)
-      if (!d) continue
-      const name =
-        (f.properties as { name?: string } | null)?.name ?? String(f.id)
-      if (name === 'Antarctica') continue
-      const fact = findCountryFact(name)
-      const id = String(f.id ?? name)
-      nextPaths.push({ id, d, name, fact })
-
-      const [cx, cy] = geoCentroid(f as Feature<Geometry>)
-      const projected = projection([cx, cy])
-      if (!projected) continue
-      const area = Math.abs(path.area(f as Feature<Geometry>))
-      nextLabels.push({
-        id,
-        name,
-        x: projected[0],
-        y: projected[1],
-        area,
-        fact,
-      })
-    }
-
-    nextLabels.sort((a, b) => b.area - a.area)
-
-    const nextPins: Pin[] = []
-    for (const fact of options) {
-      if (!fact.pin) continue
-      if (
-        !interactive &&
-        fact.id !== targetId &&
-        fact.id !== highlightId
-      ) {
-        continue
-      }
-      const lon = -180 + (fact.pin.x / 100) * 360
-      const lat = 90 - (fact.pin.y / 100) * 180
-      const projected = projection([lon, lat])
-      if (!projected) continue
-      nextPins.push({
-        fact,
-        x: projected[0],
-        y: projected[1],
-        labelPrimary: fact.name,
-        labelSecondary: fact.capital,
-      })
-    }
-
-    return {
-      countryPaths: nextPaths,
-      labels: nextLabels,
-      pins: nextPins,
-      projectionReady: true,
-    }
-  }, [topo, options, interactive, targetId, highlightId])
+    return { atlas, spots, cam, factByShape }
+  }, [topo, options])
 
   if (loadError) {
     return (
@@ -669,7 +578,7 @@ function WorldAtlasMap({
     )
   }
 
-  if (!topo || !projectionReady) {
+  if (!view) {
     return (
       <div className="flex h-[280px] items-center justify-center rounded-3xl bg-[#0b3d4a] text-sm font-bold text-[#b8ebe0]">
         Loading world map…
@@ -677,175 +586,153 @@ function WorldAtlasMap({
     )
   }
 
+  const { atlas, spots, cam, factByShape } = view
+  /** Map units per screen unit, so pins and labels keep their size when zoomed. */
+  const k = cam.w / MAP_W
+
+  function stateOf(fact: GeoFact) {
+    const isSelected = fact.id === selectedId
+    const isTarget = fact.id === targetId
+    const wrong = feedback === 'wrong' && isSelected && !isTarget
+    const correct = Boolean(feedback) && isTarget
+    const highlighted = !interactive && (isTarget || fact.id === highlightId)
+    return { wrong, correct, highlighted }
+  }
+
   return (
     <div className="relative overflow-hidden rounded-3xl border border-[#0b3d4a]/15 shadow-inner">
       <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="h-auto w-full max-h-[460px] bg-[#0b3d4a]"
+        viewBox={cameraToViewBox(cam)}
+        className={`h-auto w-full bg-[#0b3d4a] ${
+          large ? 'max-h-[min(72vh,760px)]' : 'max-h-[460px]'
+        }`}
         role="img"
-        aria-label="World map with country names"
+        aria-label="World map"
       >
         <defs>
-          <filter id={`${gradId}-glow`} x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="1" stdDeviation="1.2" floodOpacity="0.28" />
-          </filter>
+          <radialGradient id={`${gradId}-sea`} cx="50%" cy="45%" r="75%">
+            <stop offset="0%" stopColor="#1f8494" />
+            <stop offset="100%" stopColor="#0b3d4a" />
+          </radialGradient>
         </defs>
-        <rect width={WIDTH} height={HEIGHT} fill="#0b3d4a" />
+        <rect width={WIDTH} height={HEIGHT} fill={`url(#${gradId}-sea)`} />
 
-        {countryPaths.map((c) => {
-          const isTarget =
-            c.fact?.id === targetId ||
-            (highlightId && c.fact?.id === highlightId) ||
-            countryMatchKey(c.name) ===
-              countryMatchKey(
-                optionById.get(targetId)?.name ?? '',
-              )
+        {atlas.shapes.map((shape) => {
+          const fact = factByShape.get(shape.key)
+          const st = fact ? stateOf(fact) : null
+          const tappable = Boolean(fact) && canTap
           return (
             <path
-              key={c.id}
-              d={c.d}
-              fill={isTarget ? '#e8d4b8' : '#c9b396'}
-              stroke="#6f5840"
-              strokeWidth={0.45}
+              key={shape.key}
+              d={shape.d}
+              fill={
+                st?.correct
+                  ? '#8fd3b0'
+                  : st?.wrong
+                    ? '#e07a5f'
+                    : st?.highlighted
+                      ? '#f4a261'
+                      : fact && interactive
+                        ? '#f7ecd6'
+                        : '#d8c3a5'
+              }
+              stroke={fact && interactive ? '#0b3d4a' : '#8d7355'}
+              strokeWidth={fact && interactive ? 1.5 : 0.6}
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              style={
+                tappable
+                  ? { cursor: 'pointer', touchAction: 'manipulation' }
+                  : undefined
+              }
+              onPointerUp={(e) => {
+                if (!tappable || !fact) return
+                e.preventDefault()
+                e.stopPropagation()
+                onSelect(fact)
+              }}
             />
           )
         })}
 
-        {labels.map((label) => {
-          const fontSize =
-            label.area > 9000
-              ? 11
-              : label.area > 3500
-                ? 9
-                : label.area > 1200
-                  ? 7.5
-                  : 6.5
-          const isLesson =
-            label.fact &&
-            (label.fact.id === targetId ||
-              label.fact.id === highlightId ||
-              optionById.has(label.fact.id))
-          return (
-            <text
-              key={`lbl-${label.id}`}
-              x={label.x}
-              y={label.y}
-              textAnchor="middle"
-              style={{
-                fontFamily: 'Nunito, sans-serif',
-                fontSize: isLesson ? fontSize + 1.5 : fontSize,
-                fontWeight: isLesson ? 800 : 700,
-                fill: isLesson ? '#06262f' : '#f3efe6',
-                paintOrder: 'stroke',
-                stroke: isLesson
-                  ? 'rgba(247,244,238,0.92)'
-                  : 'rgba(6,38,47,0.75)',
-                strokeWidth: isLesson ? 3 : 2.2,
-                pointerEvents: 'none',
-              }}
-            >
-              {label.name}
-            </text>
+        {spots.map(({ fact, shape, anchor }) => {
+          const st = stateOf(fact)
+          const emphasize = st.correct || st.wrong || st.highlighted
+          if (!interactive && !emphasize) return null
+          const [x, y] = anchor
+          const showDot = !shape || shape.area < 900 * k * k || emphasize
+          const fill = st.correct ? '#2f6f4e' : st.wrong ? '#e07a5f' : '#0f5363'
+          const fontSize = (emphasize ? 16 : 13) * k
+          const halfText = fact.name.length * fontSize * 0.3 + 6 * k
+          const labelX = Math.min(
+            Math.max(x, cam.x + halfText),
+            cam.x + cam.w - halfText,
           )
-        })}
-
-        {pins.map((pin) => {
-          const isSelected = pin.fact.id === selectedId
-          const wrong =
-            feedback === 'wrong' && isSelected && pin.fact.id !== targetId
-          const correct =
-            feedback === 'correct' &&
-            (isSelected || pin.fact.id === targetId)
-          const isTarget = pin.fact.id === targetId
-          const emphasize = isTarget || isSelected || correct || wrong
-
-          if (!emphasize && pin.fact.kind === 'country') {
-            return canTap ? (
-              <circle
-                key={pin.fact.id}
-                cx={pin.x}
-                cy={pin.y}
-                r={22}
-                fill="transparent"
-                style={{ cursor: 'pointer' }}
-                onPointerUp={(e) => {
-                  e.preventDefault()
-                  onSelect(pin.fact)
-                }}
-              />
-            ) : null
-          }
-
           return (
-            <g key={pin.fact.id} filter={`url(#${gradId}-glow)`}>
-              <circle
-                cx={pin.x}
-                cy={pin.y}
-                r={emphasize ? 9 : 6}
-                fill={correct ? '#2f6f4e' : wrong ? '#e07a5f' : '#e07a5f'}
-                stroke="#f7f4ee"
-                strokeWidth={2}
-              />
-              {emphasize && (
-                <g transform={`translate(${pin.x}, ${pin.y - 24})`}>
-                  <rect
-                    x={-72}
-                    y={-20}
-                    width={144}
-                    height={pin.labelSecondary ? 38 : 24}
-                    rx={8}
-                    fill="rgba(247,244,238,0.97)"
+            <g key={fact.id}>
+              {showDot && (
+                <>
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={(emphasize ? 15 : 11) * k}
+                    fill={
+                      st.correct
+                        ? 'rgba(47,111,78,0.3)'
+                        : 'rgba(126,214,193,0.3)'
+                    }
                   />
-                  <text
-                    textAnchor="middle"
-                    y={pin.labelSecondary ? -3 : 2}
-                    style={{
-                      fontFamily: 'Nunito, sans-serif',
-                      fontSize: 12,
-                      fontWeight: 800,
-                      fill: '#0b3d4a',
-                    }}
-                  >
-                    {pin.labelPrimary}
-                  </text>
-                  {pin.labelSecondary ? (
-                    <text
-                      textAnchor="middle"
-                      y={14}
-                      style={{
-                        fontFamily: 'Nunito, sans-serif',
-                        fontSize: 11,
-                        fontWeight: 700,
-                        fill: '#176b7a',
-                      }}
-                    >
-                      {pin.labelSecondary}
-                    </text>
-                  ) : null}
-                </g>
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r={(emphasize ? 8 : 6) * k}
+                    fill={fill}
+                    stroke="#f7f4ee"
+                    strokeWidth={1.8 * k}
+                  />
+                </>
               )}
+              <text
+                x={labelX}
+                y={y + (showDot ? 26 : 5) * k}
+                textAnchor="middle"
+                style={{
+                  fontFamily: 'Nunito, sans-serif',
+                  fontSize,
+                  fontWeight: 800,
+                  fill: '#06262f',
+                  paintOrder: 'stroke',
+                  stroke: 'rgba(255,250,240,0.95)',
+                  strokeWidth: 4 * k,
+                  strokeLinejoin: 'round',
+                  pointerEvents: 'none',
+                }}
+              >
+                {fact.name}
+              </text>
               {canTap && (
                 <circle
-                  cx={pin.x}
-                  cy={pin.y}
-                  r={26}
+                  cx={x}
+                  cy={y}
+                  r={(large ? 30 : 24) * k}
                   fill="transparent"
-                  style={{ cursor: 'pointer' }}
+                  style={{ cursor: 'pointer', touchAction: 'manipulation' }}
                   onPointerUp={(e) => {
                     e.preventDefault()
-                    onSelect(pin.fact)
+                    e.stopPropagation()
+                    onSelect(fact)
                   }}
-                />
+                >
+                  <title>{fact.name}</title>
+                </circle>
               )}
             </g>
           )
         })}
       </svg>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#06262f]/55 to-transparent px-4 pb-3 pt-10">
-        <p className="text-center text-xs font-semibold tracking-wide text-[#b8ebe0]">
-          {canTap
-            ? 'World map with country names — tap the correct place'
-            : 'World map with country names'}
+        <p className="text-center text-xs font-semibold tracking-wide text-[#b8ebe0] sm:text-sm">
+          {canTap ? 'Tap the correct place' : 'World map'}
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
-import { UNITS, factsForUnit, formatPopulation } from '../data/curriculum'
+import { useState } from 'react'
+import { UNITS, factsForUnit, formatPopulation, type GeoFact } from '../data/curriculum'
 import { useApp } from '../state/AppContext'
 import { masteryLabel } from '../lib/srs'
 import {
@@ -7,6 +8,7 @@ import {
   unitProgress,
   unitReadyForPlacement,
 } from '../lib/storage'
+import { PlaceTour } from './PlaceTour'
 
 type Props = {
   onBack: () => void
@@ -22,6 +24,7 @@ export function Progress({
   onOpenPlacement,
 }: Props) {
   const { active, resetProgress } = useApp()
+  const [tourFact, setTourFact] = useState<GeoFact | null>(null)
   if (!active) return null
 
   const overall = overallMastery(active)
@@ -87,18 +90,32 @@ export function Progress({
                       style={{ width: `${p.pct}%` }}
                     />
                   </div>
-                  <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ocean-700">
+                    Tap a place to watch its tour
+                  </p>
+                  <ul className="mt-2 grid gap-2 sm:grid-cols-2">
                     {facts.map((fact) => {
                       const card = active.cards[fact.id]
                       const label = masteryLabel(
                         active.introduced.includes(fact.id) ? card : undefined,
                       )
                       return (
-                        <li
-                          key={fact.id}
-                          className="flex items-center justify-between rounded-xl bg-sand-100 px-3 py-2 text-sm"
-                        >
-                          <span className="font-bold text-ocean-950">
+                        <li key={fact.id}>
+                          <button
+                            type="button"
+                            onClick={() => setTourFact(fact)}
+                            title={`Watch the ${fact.name} tour`}
+                            className="flex w-full items-center gap-2 rounded-xl bg-sand-100 px-3 py-2 text-left text-sm transition hover:bg-sea-200/60"
+                          >
+                          <span
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-coral text-white"
+                            aria-hidden
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </span>
+                          <span className="flex-1 font-bold text-ocean-950">
                             {fact.name}
                             {fact.capital ? (
                               <span className="font-semibold text-ocean-700">
@@ -125,6 +142,7 @@ export function Progress({
                           >
                             {label}
                           </span>
+                          </button>
                         </li>
                       )
                     })}
@@ -183,6 +201,39 @@ export function Progress({
         >
           Reset this explorer
         </button>
+      </div>
+
+      {tourFact && (
+        <TourModal fact={tourFact} onClose={() => setTourFact(null)} />
+      )}
+    </div>
+  )
+}
+
+function TourModal({ fact, onClose }: { fact: GeoFact; onClose: () => void }) {
+  return (
+    <div
+      className="no-print fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-ocean-950/70 p-3 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${fact.name} tour`}
+      onClick={onClose}
+    >
+      <div
+        className="animate-pop my-auto w-full max-w-3xl rounded-3xl bg-white p-4 shadow-2xl sm:p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="font-display text-2xl text-ocean-950">{fact.name}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-ocean-900/10 px-3 py-2 text-sm font-bold text-ocean-900"
+          >
+            Close
+          </button>
+        </div>
+        <PlaceTour fact={fact} />
       </div>
     </div>
   )

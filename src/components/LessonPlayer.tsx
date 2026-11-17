@@ -8,8 +8,11 @@ import {
 } from '../lib/storage'
 import { buildDailySession, sessionMeta } from '../lib/session'
 import { reviewCard, type Grade } from '../lib/srs'
-import { formatPopulation } from '../data/curriculum'
 import { AtlasMap } from './AtlasMap'
+import { Confetti } from './Confetti'
+import { PlaceTour } from './PlaceTour'
+
+const CHEERS = ['Yes!', 'You got it!', 'Nice work!', 'Exactly right!', 'Great memory!']
 
 type Props = {
   explorer: Explorer
@@ -34,6 +37,7 @@ export function LessonPlayer({
   const [answered, setAnswered] = useState(0)
   const [done, setDone] = useState(false)
   const [working, setWorking] = useState(explorer)
+  const [tourDone, setTourDone] = useState(false)
 
   const step = steps[index]
   const progress = steps.length ? ((index + (done ? 1 : 0)) / steps.length) * 100 : 0
@@ -75,7 +79,7 @@ export function LessonPlayer({
       } else {
         setIndex((i) => i + 1)
       }
-    }, wasCorrect ? 700 : 1100)
+    }, wasCorrect ? 1000 : 2200)
   }
 
   function onTeachContinue() {
@@ -88,6 +92,7 @@ export function LessonPlayer({
     ensureCard(next, step.fact.id)
     setWorking(next)
     onUpdate(next)
+    setTourDone(false)
     if (index + 1 >= steps.length) {
       const finished = recordSessionComplete(next)
       onUpdate(finished)
@@ -140,6 +145,24 @@ export function LessonPlayer({
         animate={{ opacity: 1, y: 0 }}
         className="mx-auto max-w-lg rounded-3xl bg-white/90 p-8 text-center shadow-lg"
       >
+        <Confetti />
+        <motion.div
+          className="mx-auto mb-3 flex h-20 w-20 items-center justify-center rounded-full bg-amber/25"
+          initial={{ scale: 0, rotate: -40 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 10, delay: 0.15 }}
+          aria-hidden
+        >
+          <svg width="46" height="46" viewBox="0 0 24 24">
+            <path
+              d="M12 1.8l3.1 6.5 7.1.9-5.2 4.9 1.3 7-6.3-3.4-6.3 3.4 1.3-7L1.8 9.2l7.1-.9z"
+              fill="#ffd23f"
+              stroke="#06262f"
+              strokeWidth="1.2"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </motion.div>
         <p className="text-sm font-bold uppercase tracking-[0.2em] text-coral">
           Trail complete
         </p>
@@ -147,7 +170,8 @@ export function LessonPlayer({
           Great exploring, {explorer.name}!
         </h2>
         <p className="mt-3 text-ocean-800/80">
-          About {meta.minutes} minutes of geography locked in with spaced review.
+          That&apos;s today&apos;s {meta.minutes} minutes done. Come back tomorrow to
+          keep these places in your memory.
         </p>
         <div className="mt-6 grid grid-cols-3 gap-3">
           <Stat label="Answered" value={String(answered)} />
@@ -232,31 +256,12 @@ export function LessonPlayer({
           </h2>
 
           {step.kind === 'teach' && (
-            <div className="mt-5 space-y-4">
-              <p className="text-lg leading-relaxed text-ocean-800">
-                {step.prompt}
-              </p>
-              {typeof step.fact.population === 'number' && (
-                <p className="text-base font-bold text-ocean-900">
-                  Population: about {formatPopulation(step.fact.population)} people
-                </p>
-              )}
-              <p className="rounded-2xl bg-sea-200/40 px-4 py-3 text-sm font-semibold text-ocean-900">
-                {step.fact.clue}
-              </p>
-              {step.fact.pin && (
-                <AtlasMap
-                  options={[step.fact]}
-                  targetId={step.fact.id}
-                  highlightId={step.fact.id}
-                  interactive={false}
-                  disabled
-                  large
-                  focusNames={[step.fact.name]}
-                  labelMode="target"
-                  onSelect={() => undefined}
-                />
-              )}
+            <div className="mt-4 space-y-4">
+              <PlaceTour
+                key={step.id}
+                fact={step.fact}
+                onFinished={() => setTourDone(true)}
+              />
               <button
                 type="button"
                 onClick={(e) => {
@@ -268,10 +273,14 @@ export function LessonPlayer({
                   e.preventDefault()
                   onTeachContinue()
                 }}
-                className="relative z-20 w-full rounded-2xl bg-[#0b3d4a] py-3.5 text-lg font-extrabold text-[#f3efe6]"
+                className={`relative z-20 w-full rounded-2xl py-3.5 font-extrabold transition ${
+                  tourDone
+                    ? 'animate-pop bg-[#0b3d4a] text-lg text-[#f3efe6] shadow-md'
+                    : 'bg-[#0b3d4a]/10 text-base text-[#0b3d4a]'
+                }`}
                 style={{ touchAction: 'manipulation' }}
               >
-                Got it — practice next
+                {tourDone ? 'Got it — let’s practice!' : 'Skip the tour'}
               </button>
             </div>
           )}
@@ -314,10 +323,41 @@ export function LessonPlayer({
                       }`}
                       style={{ touchAction: 'manipulation' }}
                     >
-                      {choice}
+                      <span className="flex items-center justify-between gap-3">
+                        {choice}
+                        {showCorrect && (
+                          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+                            <circle cx="12" cy="12" r="11" fill="#2f6f4e" />
+                            <path d="M7 12.5l3.2 3.2L17 9" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                        {showWrong && (
+                          <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+                            <circle cx="12" cy="12" r="11" fill="#e07a5f" />
+                            <path d="M8 8l8 8M16 8l-8 8" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+                          </svg>
+                        )}
+                      </span>
                     </button>
                   )
                 })}
+                <p
+                  className={`min-h-[1.75rem] text-center text-base font-extrabold ${
+                    feedback === 'correct' ? 'text-moss' : 'text-coral'
+                  }`}
+                  aria-live="polite"
+                >
+                  {feedback === 'correct' &&
+                    `${CHEERS[index % CHEERS.length]} ${
+                      step.kind === 'capital'
+                        ? `${step.answer} is the capital of ${step.fact.name}.`
+                        : `That’s ${step.fact.name}.`
+                    }`}
+                  {feedback === 'wrong' &&
+                    (step.kind === 'capital'
+                      ? `Not quite. The capital of ${step.fact.name} is ${step.answer}.`
+                      : `Not quite. The answer is ${step.answer}.`)}
+                </p>
               </div>
             )}
 

@@ -146,6 +146,71 @@ button {
   animation: pulse-ring 1.6s ease-out infinite;
 }
 
+@keyframes tour-glow {
+  0%,
+  100% {
+    stroke-opacity: 0.15;
+  }
+  50% {
+    stroke-opacity: 0.85;
+  }
+}
+
+.tour-glow {
+  animation: tour-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes tour-ping {
+  0% {
+    transform: scale(0.35);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.tour-ping {
+  animation: tour-ping 1.4s ease-out infinite;
+}
+
+@keyframes confetti-fall {
+  0% {
+    transform: translate3d(0, -12vh, 0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--drift, 0), 105vh, 0) rotate(720deg);
+    opacity: 0.9;
+  }
+}
+
+.confetti-piece {
+  position: fixed;
+  top: 0;
+  width: 10px;
+  height: 16px;
+  border-radius: 3px;
+  pointer-events: none;
+  animation: confetti-fall linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-glow,
+  .tour-ping,
+  .confetti-piece,
+  .animate-float,
+  .animate-title-bounce,
+  .animate-drift-glow {
+    animation: none;
+  }
+
+  .confetti-piece {
+    display: none;
+  }
+}
+
 .atlas-grid {
   background-image:
     linear-gradient(rgba(11, 61, 74, 0.06) 1px, transparent 1px),

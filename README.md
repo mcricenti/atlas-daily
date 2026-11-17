@@ -22,10 +22,32 @@ Progressive path:
 
 Inspired by strong patterns from apps like Yonder, US States Trainer, Geo Touch, and Classical Quest:
 
-- **I Do** — clear teach step with map pin and a memorable clue
+- **I Do** — a short narrated map tour of each new place (see below)
 - **We Do** — guided multiple-choice with scaffolding
 - **You Do** — capital recall and map location
 - **Spaced review** — due cards return on expanding intervals until mastered
+
+### Place tours
+
+Every new place is introduced with a 30–45 second animated tour that plays like a short video:
+
+1. **Find it** — the place glows on the whole U.S. or world map
+2. **Fly in** — the camera zooms to the region while the clue is read
+3. **Neighbors** — bordering states/countries light up one by one (worked out from the map data)
+4. **Capital** — a star drops onto the capital
+5. **Key facts** — nickname, population and a fun fact
+6. **Say it** — recap to repeat out loud
+
+Rivers, the Great Wall and the Great Barrier Reef draw themselves along their course. Narration uses the
+device's built-in voice (Web Speech API) and can be muted; captions always show. Tours can be paused,
+stepped through, replayed, and rewatched any time from the **Trail map** by tapping a place.
+
+Tour content lives in:
+
+- `src/data/funFacts.ts` — nickname and fun fact per place
+- `src/data/geo/worldCoords.ts` — real coordinates, camera frames and river courses
+- `src/lib/tour.ts` — the scene script and captions
+- `public/geo/countries-50m.json` — world map (Natural Earth 1:50m via `world-atlas`, simplified)
 
 Progress stays on the device (localStorage). Multiple explorers (siblings) are supported.
 
