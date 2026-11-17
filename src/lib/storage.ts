@@ -20,7 +20,16 @@ export type Explorer = {
   lastSessionDate?: string
   gentleStreak: number
   trailCoins: number
+  /** Every answer, newest last (capped), for the grown-ups page */
+  log: AnswerLog[]
+  /** Weekly challenge results */
+  bosses: BossResult[]
 }
+
+export type AnswerLog = { t: number; f: string; ok: boolean; q: string }
+export type BossResult = { t: number; correct: number; total: number }
+
+const LOG_CAP = 5000
 
 export type AppState = {
   explorers: Explorer[]
@@ -29,8 +38,11 @@ export type AppState = {
 
 const KEY = 'atlas-daily-v1'
 
-function todayKey(d = new Date()): string {
-  return d.toISOString().slice(0, 10)
+/** Local calendar date (not UTC), so evening lessons count for the right day. */
+export function todayKey(d = new Date()): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
 }
 
 export function loadState(): AppState {
@@ -44,6 +56,8 @@ export function loadState(): AppState {
       completedUnits: e.completedUnits ?? [],
       introduced: e.introduced ?? [],
       cards: e.cards ?? {},
+      log: e.log ?? [],
+      bosses: e.bosses ?? [],
     }))
     return parsed
   } catch {
@@ -71,7 +85,41 @@ export function createExplorer(name: string): Explorer {
     totalAnswered: 0,
     gentleStreak: 0,
     trailCoins: 0,
+    log: [],
+    bosses: [],
   }
+}
+
+export function logAnswer(explorer: Explorer, entry: AnswerLog): AnswerLog[] {
+  const log = [...(explorer.log ?? []), entry]
+  return log.length > LOG_CAP ? log.slice(log.length - LOG_CAP) : log
+}
+
+const BOSS_GAP_DAYS = 6
+const BOSS_MIN_LEARNED = 10
+
+/** The weekly challenge opens once enough places are learned, about once a week. */
+export function bossAvailable(explorer: Explorer, now = Date.now()): boolean {
+  if (explorer.introduced.length < BOSS_MIN_LEARNED) return false
+  const last = explorer.bosses?.[explorer.bosses.length - 1]
+  if (!last) return true
+  return now - last.t >= BOSS_GAP_DAYS * 24 * 60 * 60 * 1000
+}
+
+export function daysUntilBoss(explorer: Explorer, now = Date.now()): number {
+  const last = explorer.bosses?.[explorer.bosses.length - 1]
+  if (!last) return 0
+  return Math.max(0, Math.ceil((last.t + BOSS_GAP_DAYS * 864e5 - now) / 864e5))
+}
+
+export type Trophy = 'gold' | 'silver' | 'bronze' | null
+
+export function trophyFor(correct: number, total: number): Trophy {
+  const pct = total ? correct / total : 0
+  if (pct >= 0.9) return 'gold'
+  if (pct >= 0.75) return 'silver'
+  if (pct >= 0.5) return 'bronze'
+  return null
 }
 
 export function ensureCard(explorer: Explorer, factId: string): CardState {

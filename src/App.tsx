@@ -5,17 +5,44 @@ import { LessonPlayer } from './components/LessonPlayer'
 import { Progress } from './components/Progress'
 import { SectionReview } from './components/SectionReview'
 import { UnitPlacementChallenge } from './components/UnitPlacementChallenge'
+import { MyAtlas } from './components/MyAtlas'
+import { HeadToHead } from './components/HeadToHead'
+import { GrownUps } from './components/GrownUps'
 import { markPlacementCleared } from './lib/storage'
 
-type Screen = 'home' | 'lesson' | 'progress' | 'review' | 'placement'
+type Screen =
+  | 'home'
+  | 'lesson'
+  | 'boss'
+  | 'progress'
+  | 'review'
+  | 'placement'
+  | 'atlas'
+  | 'duel'
+  | 'grownups'
 
 function Shell() {
-  const [screen, setScreen] = useState<Screen>('home')
+  const [screen, setScreenRaw] = useState<Screen>('home')
   const [reviewUnitId, setReviewUnitId] = useState<string | null>(null)
   const [placementUnitId, setPlacementUnitId] = useState<string | null>(null)
-  const { active, updateExplorer } = useApp()
+  const { state, active, updateExplorer } = useApp()
+
+  function setScreen(next: Screen) {
+    setScreenRaw(next)
+    window.scrollTo(0, 0)
+  }
 
   const welcome = screen === 'home' && !active
+  const home = (
+    <Home
+      onStartLesson={() => setScreen('lesson')}
+      onOpenProgress={() => setScreen('progress')}
+      onOpenAtlas={() => setScreen('atlas')}
+      onStartBoss={() => setScreen('boss')}
+      onOpenDuel={() => setScreen('duel')}
+      onOpenGrownUps={() => setScreen('grownups')}
+    />
+  )
 
   return (
     <main
@@ -23,18 +50,15 @@ function Shell() {
         welcome ? 'pb-0' : 'pb-16'
       }`}
     >
-      {screen === 'home' && (
-        <Home
-          onStartLesson={() => setScreen('lesson')}
-          onOpenProgress={() => setScreen('progress')}
-        />
-      )}
-      {screen === 'lesson' && active && (
+      {(screen === 'home' || !active) && screen !== 'grownups' && home}
+      {(screen === 'lesson' || screen === 'boss') && active && (
         <div className="px-4 py-8">
           <LessonPlayer
+            key={screen}
             explorer={active}
+            mode={screen === 'boss' ? 'boss' : 'daily'}
             onUpdate={updateExplorer}
-            onExit={() => setScreen('progress')}
+            onExit={() => setScreen('home')}
             onStartPlacement={(unitId) => {
               setPlacementUnitId(unitId)
               setScreen('placement')
@@ -42,13 +66,7 @@ function Shell() {
           />
         </div>
       )}
-      {screen === 'lesson' && !active && (
-        <Home
-          onStartLesson={() => setScreen('lesson')}
-          onOpenProgress={() => setScreen('progress')}
-        />
-      )}
-      {screen === 'progress' && (
+      {screen === 'progress' && active && (
         <Progress
           onBack={() => setScreen('home')}
           onStartLesson={() => setScreen('lesson')}
@@ -62,7 +80,7 @@ function Shell() {
           }}
         />
       )}
-      {screen === 'review' && reviewUnitId && (
+      {screen === 'review' && reviewUnitId && active && (
         <SectionReview
           unitId={reviewUnitId}
           onBack={() => setScreen('progress')}
@@ -81,6 +99,15 @@ function Shell() {
             }}
           />
         </div>
+      )}
+      {screen === 'atlas' && active && (
+        <MyAtlas explorer={active} onBack={() => setScreen('home')} />
+      )}
+      {screen === 'duel' && active && (
+        <HeadToHead explorers={state.explorers} onBack={() => setScreen('home')} />
+      )}
+      {screen === 'grownups' && (
+        <GrownUps explorers={state.explorers} onBack={() => setScreen('home')} />
       )}
     </main>
   )

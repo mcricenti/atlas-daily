@@ -47,9 +47,11 @@ export type Atlas = {
 
 export const FULL_CAMERA: Camera = { x: 0, y: 0, w: MAP_W, h: MAP_H }
 
+const BASE = import.meta.env?.BASE_URL ?? '/'
+
 const TOPO_URL: Record<MapKind, string> = {
-  us: `${import.meta.env.BASE_URL}geo/states-10m.json`,
-  world: `${import.meta.env.BASE_URL}geo/countries-50m.json`,
+  us: `${BASE}geo/states-10m.json`,
+  world: `${BASE}geo/countries-50m.json`,
 }
 
 const topoCache = new Map<MapKind, Promise<Topology>>()

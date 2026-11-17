@@ -1,13 +1,25 @@
-import { factsForUnit, distractorsFor, type GeoFact } from '../data/curriculum'
+import { FACTS, factsForUnit, distractorsFor, type GeoFact } from '../data/curriculum'
+import { ISO2 } from '../data/flags'
+import { GEO_FACTS } from '../data/geo/geoFacts'
 import { ensureCard, type Explorer } from './storage'
-import { isDue } from './srs'
+import { isDue, type CardState } from './srs'
 
-export type StepKind =
-  | 'teach'
-  | 'guided'
-  | 'map'
-  | 'capital'
-  | 'review'
+/**
+ * Question types, from easiest to hardest.
+ * Which ones a place gets depends on how well it is known (see `tierFor`).
+ */
+export type QuestionKind =
+  | 'name' // clue → pick the place
+  | 'capital' // place → pick its capital
+  | 'reverse' // capital → pick the place
+  | 'map' // tap the place on a labelled map
+  | 'flag' // flag → pick the country
+  | 'neighbor' // which of these shares a border with it?
+  | 'bigger' // which of two places is bigger?
+  | 'type' // type the capital from memory
+  | 'blankmap' // tap the place on a map with no names
+
+export type StepKind = 'teach' | QuestionKind
 
 export type LessonStep = {
   id: string
@@ -17,165 +29,316 @@ export type LessonStep = {
   /** Correct answer text */
   answer: string
   choices?: string[]
-  /** For map steps: pin targets among unit facts */
+  /** For map steps: the places that can be tapped */
   mapOptions?: GeoFact[]
   phaseLabel: string
+  /** Shown after answering, to teach something whether right or wrong */
+  explain?: string
+  /** A second try at a place missed earlier in the same lesson */
+  retry?: boolean
+  /** True for places learned in an earlier unit */
+  fromEarlierUnit?: boolean
 }
 
-const SESSION_TARGET = 12
-const NEW_PER_DAY = 3
 const MINUTES_HINT = 10
+const MAX_NEW = 3
+const MAX_REVIEWS = 18
+const MIN_REVIEWS = 4
+const DAY = 24 * 60 * 60 * 1000
 
 export function sessionMeta() {
-  return { targetSteps: SESSION_TARGET, minutes: MINUTES_HINT, newPerDay: NEW_PER_DAY }
+  return { minutes: MINUTES_HINT, newPerDay: MAX_NEW }
 }
 
 function shuffle<T>(arr: T[]): T[] {
-  return [...arr].sort(() => Math.random() - 0.5)
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
 }
 
-function uniqueFacts(facts: GeoFact[]): GeoFact[] {
-  const seen = new Set<string>()
-  return facts.filter((f) => {
-    if (seen.has(f.id)) return false
-    seen.add(f.id)
-    return true
-  })
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function uid(prefix: string, fact: GeoFact) {
+  return `${prefix}-${fact.id}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+/** 1 = just learned, 2 = getting there, 3 = knows it well. */
+export function tierFor(card: CardState | undefined): 1 | 2 | 3 {
+  const reps = card?.repetitions ?? 0
+  if (reps <= 1) return 1
+  if (reps <= 3) return 2
+  return 3
+}
+
+const TIER_LABEL = ['', 'Review', 'Review · Level 2', 'Review · Level 3']
+
+function neighborFacts(fact: GeoFact): GeoFact[] {
+  return (GEO_FACTS[fact.id]?.neighbors ?? [])
+    .map((id) => FACTS.find((f) => f.id === id))
+    .filter(Boolean) as GeoFact[]
+}
+
+/** Which question types suit this place at this level. */
+export function modesFor(fact: GeoFact, tier: 1 | 2 | 3): QuestionKind[] {
+  const hasCapital = Boolean(fact.capital)
+  const hasFlag = Boolean(ISO2[fact.id])
+  const hasNeighbors = neighborFacts(fact).length > 0
+  const hasArea = Boolean(GEO_FACTS[fact.id]?.areaSqMi)
+  const modes: QuestionKind[] = []
+  if (tier === 1) {
+    modes.push('name')
+    if (hasCapital) modes.push('capital')
+    modes.push('map')
+  } else if (tier === 2) {
+    modes.push('map')
+    if (hasCapital) modes.push('reverse', 'capital')
+    if (hasFlag) modes.push('flag')
+    if (hasNeighbors) modes.push('neighbor')
+    if (!hasCapital) modes.push('name')
+  } else {
+    modes.push('blankmap')
+    if (hasCapital) modes.push('type', 'type')
+    if (hasFlag) modes.push('flag')
+    if (hasNeighbors) modes.push('neighbor')
+    if (hasArea) modes.push('bigger')
+  }
+  return modes
+}
+
+// ── Question builders ────────────────────────────────────────────
+
+function makeTeach(fact: GeoFact): LessonStep {
+  return {
+    id: uid('teach', fact),
+    kind: 'teach',
+    fact,
+    prompt: fact.name,
+    answer: fact.name,
+    phaseLabel: 'New place — watch the tour',
+  }
+}
+
+export function makeQuestion(
+  fact: GeoFact,
+  kind: QuestionKind,
+  phaseLabel: string,
+): LessonStep {
+  const base = { id: uid(kind, fact), kind, fact, phaseLabel }
+  const sizeWord = (f: GeoFact) => (f.kind === 'state' ? 'state' : 'country')
+
+  switch (kind) {
+    case 'name':
+      return {
+        ...base,
+        prompt: fact.clue,
+        answer: fact.name,
+        choices: shuffle([fact.name, ...distractorsFor(fact, 'name', 3)]),
+      }
+    case 'capital':
+      return {
+        ...base,
+        prompt: `What is the capital of ${fact.name}?`,
+        answer: fact.capital!,
+        choices: shuffle([fact.capital!, ...distractorsFor(fact, 'capital', 3)]),
+      }
+    case 'reverse':
+      return {
+        ...base,
+        prompt: `${fact.capital} is the capital of which ${sizeWord(fact)}?`,
+        answer: fact.name,
+        choices: shuffle([fact.name, ...distractorsFor(fact, 'name', 3)]),
+      }
+    case 'type':
+      return {
+        ...base,
+        prompt: `Type the capital of ${fact.name}`,
+        answer: fact.capital!,
+      }
+    case 'flag':
+      return {
+        ...base,
+        prompt: 'Which country has this flag?',
+        answer: fact.name,
+        choices: shuffle([fact.name, ...distractorsFor(fact, 'name', 3)]),
+      }
+    case 'neighbor': {
+      const near = neighborFacts(fact)
+      const answer = pick(near)
+      const nearIds = new Set(near.map((f) => f.id))
+      const pool = shuffle(
+        FACTS.filter(
+          (f) =>
+            f.kind === fact.kind &&
+            f.id !== fact.id &&
+            !nearIds.has(f.id) &&
+            (f.region === fact.region || f.unitId === fact.unitId),
+        ),
+      )
+      const names = GEO_FACTS[fact.id]?.borderNames ?? near.map((f) => f.name)
+      return {
+        ...base,
+        prompt: `Which of these shares a border with ${fact.name}?`,
+        answer: answer.name,
+        choices: shuffle([answer.name, ...pool.slice(0, 3).map((f) => f.name)]),
+        explain: `${fact.name} borders ${listNames(names)}.`,
+      }
+    }
+    case 'bigger': {
+      const mine = GEO_FACTS[fact.id].areaSqMi
+      const others = FACTS.filter((f) => {
+        const a = GEO_FACTS[f.id]?.areaSqMi
+        if (!a || f.id === fact.id || f.kind !== fact.kind) return false
+        const ratio = Math.max(a, mine) / Math.min(a, mine)
+        return ratio >= 1.5 && ratio <= 12
+      })
+      const sameRegion = others.filter((f) => f.region === fact.region)
+      const other = pick(sameRegion.length ? sameRegion : others) ?? fact
+      const theirs = GEO_FACTS[other.id]?.areaSqMi ?? mine
+      const [big, small] = mine >= theirs ? [fact, other] : [other, fact]
+      const ratio = Math.max(mine, theirs) / Math.min(mine, theirs)
+      return {
+        ...base,
+        prompt: 'Which one is bigger?',
+        answer: big.name,
+        choices: shuffle([fact.name, other.name]),
+        explain: `${big.name} is about ${timesWord(ratio)} as big as ${small.name}.`,
+      }
+    }
+    case 'map':
+    case 'blankmap': {
+      const own = factsForUnit(fact.unitId).filter((f) => f.id !== fact.id)
+      const options = shuffle([fact, ...shuffle(own).slice(0, 5)])
+      return {
+        ...base,
+        prompt:
+          kind === 'blankmap'
+            ? `No names this time! Tap ${fact.name}`
+            : `Tap ${fact.name} on the map`,
+        answer: fact.name,
+        mapOptions: options,
+      }
+    }
+  }
+}
+
+function timesWord(ratio: number) {
+  if (ratio < 1.75) return 'one and a half times'
+  const n = Math.round(ratio)
+  const words = ['', '', 'twice', 'three times', 'four times', 'five times', 'six times']
+  return words[n] ?? `${n} times`
+}
+
+function listNames(names: string[]): string {
+  if (names.length <= 1) return names.join('')
+  if (names.length === 2) return `${names[0]} and ${names[1]}`
+  return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
+}
+
+/** A question about a place someone has already met, at the right difficulty. */
+export function makeReview(explorer: Explorer, fact: GeoFact, minTier: 1 | 2 | 3 = 1): LessonStep {
+  const tier = Math.max(minTier, tierFor(explorer.cards[fact.id])) as 1 | 2 | 3
+  const step = makeQuestion(fact, pick(modesFor(fact, tier)), TIER_LABEL[tier])
+  step.fromEarlierUnit = fact.unitId !== explorer.currentUnitId
+  return step
+}
+
+/** An easy second try at a place missed earlier in the lesson. */
+export function makeRetry(fact: GeoFact, missed: QuestionKind): LessonStep {
+  const options = modesFor(fact, 1).filter((m) => m !== missed)
+  const step = makeQuestion(fact, pick(options.length ? options : modesFor(fact, 1)), 'Try again')
+  step.retry = true
+  return step
+}
+
+// ── Sessions ─────────────────────────────────────────────────────
+
+/** Most overdue first, compared to how long the gap was meant to be. */
+function overdueScore(card: CardState, now: number) {
+  return (now - card.dueAt) / (Math.max(card.interval, 0.25) * DAY)
+}
+
+export function dueFacts(explorer: Explorer, now = Date.now()): GeoFact[] {
+  // Shuffle first so places that are equally overdue come up in a mixed order.
+  return shuffle(FACTS.filter((f) => explorer.introduced.includes(f.id)))
+    .filter((f) => isDue(ensureCard(explorer, f.id), now))
+    .sort(
+      (a, b) =>
+        overdueScore(explorer.cards[b.id], now) - overdueScore(explorer.cards[a.id], now),
+    )
 }
 
 export function buildDailySession(explorer: Explorer): LessonStep[] {
-  const unitFacts = factsForUnit(explorer.currentUnitId)
   const now = Date.now()
+  const due = dueFacts(explorer, now)
 
-  const notIntroduced = unitFacts.filter(
-    (f) => !explorer.introduced.includes(f.id),
-  )
-  const newFacts = notIntroduced.slice(0, NEW_PER_DAY)
+  // Fewer new places on days with lots to review, so lessons stay ~10 minutes.
+  const newCount =
+    due.length >= 25 ? 0 : due.length >= 15 ? 1 : due.length >= 8 ? 2 : MAX_NEW
+  const newFacts = factsForUnit(explorer.currentUnitId)
+    .filter((f) => !explorer.introduced.includes(f.id))
+    .slice(0, newCount)
 
-  const due = unitFacts
-    .filter((f) => explorer.introduced.includes(f.id))
-    .filter((f) => {
-      const card = ensureCard(explorer, f.id)
-      return isDue(card, now)
+  let reviewFacts = due.slice(0, MAX_REVIEWS)
+  if (reviewFacts.length < MIN_REVIEWS) {
+    const extra = shuffle(
+      FACTS.filter(
+        (f) =>
+          explorer.introduced.includes(f.id) &&
+          !reviewFacts.some((r) => r.id === f.id) &&
+          f.unitId === explorer.currentUnitId,
+      ),
+    )
+    reviewFacts = [...reviewFacts, ...extra].slice(0, MIN_REVIEWS)
+  }
+
+  const reviews = shuffle(reviewFacts.map((f) => makeReview(explorer, f)))
+  const blocks = newFacts.map((fact) => [
+    makeTeach(fact),
+    { ...makeQuestion(fact, 'name', 'Practice'), explain: fact.capital ? `Its capital is ${fact.capital}.` : undefined },
+    makeQuestion(fact, fact.capital ? 'capital' : 'map', 'Practice'),
+  ])
+
+  // Warm up with a couple of reviews, then mix new places in between reviews.
+  const steps: LessonStep[] = reviews.splice(0, 2)
+  for (const block of blocks) {
+    steps.push(...block, ...reviews.splice(0, 3))
+  }
+  steps.push(...reviews)
+  return steps
+}
+
+/** Weekly challenge: a mixed, harder quiz across everything learned so far. */
+export function buildBossSession(explorer: Explorer, count = 15): LessonStep[] {
+  const learned = FACTS.filter((f) => explorer.introduced.includes(f.id))
+  // Favour places that have been missed before or are less practised.
+  const weighted = learned
+    .map((f) => {
+      const c = explorer.cards[f.id]
+      const weight = (1 + (c?.lapses ?? 0)) / (1 + Math.min(c?.repetitions ?? 0, 6) * 0.4)
+      return { f, key: Math.random() ** (1 / weight) }
     })
-
-  const reviewPool = uniqueFacts([
-    ...due,
-    ...unitFacts.filter(
-      (f) =>
-        explorer.introduced.includes(f.id) &&
-        !newFacts.some((n) => n.id === f.id),
-    ),
-  ])
-
-  const steps: LessonStep[] = []
-
-  // Direct instruction: Teach → Guided → You Do for each new fact
-  for (const fact of newFacts) {
-    steps.push(makeTeach(fact))
-    steps.push(makeGuided(fact))
-    if (fact.capital) {
-      steps.push(makeCapital(fact))
-    } else {
-      steps.push(makeMap(fact, unitFacts))
-    }
-  }
-
-  // Spaced review mix
-  const reviewsNeeded = Math.max(0, SESSION_TARGET - steps.length)
-  const reviewFacts = shuffle(reviewPool).slice(0, reviewsNeeded)
-
-  for (const fact of reviewFacts) {
-    const modes: Array<() => LessonStep> = []
-    if (fact.capital) modes.push(() => makeCapital(fact))
-    modes.push(() => makeMap(fact, unitFacts))
-    modes.push(() => makeGuided(fact, true))
-    const pick = modes[Math.floor(Math.random() * modes.length)]
-    steps.push(pick())
-  }
-
-  // If brand-new explorer with empty unit progress and no review, pad with first facts teach
-  if (steps.length === 0 && unitFacts.length) {
-    const first = unitFacts.slice(0, NEW_PER_DAY)
-    for (const fact of first) {
-      steps.push(makeTeach(fact))
-      steps.push(makeGuided(fact))
-      if (fact.capital) steps.push(makeCapital(fact))
-      else steps.push(makeMap(fact, unitFacts))
-    }
-  }
-
-  return steps.slice(0, SESSION_TARGET + 2)
+    .sort((a, b) => b.key - a.key)
+    .slice(0, count)
+    .map((x) => x.f)
+  return shuffle(weighted).map((f) => {
+    const step = makeReview(explorer, f, 2)
+    step.phaseLabel = 'Weekly challenge'
+    return step
+  })
 }
 
-function makeTeach(fact: GeoFact): LessonStep {
-  const detail = fact.capital
-    ? `The capital of ${fact.name} is ${fact.capital}.`
-    : fact.kind === 'mountain'
-      ? `${fact.name} is a famous mountain in ${fact.region}.`
-      : fact.kind === 'landmark'
-        ? `${fact.name} is an important landmark in ${fact.region}.`
-        : `${fact.name} is a ${fact.kind} in ${fact.region}.`
-  return {
-    id: `teach-${fact.id}-${Math.random().toString(36).slice(2, 7)}`,
-    kind: 'teach',
-    fact,
-    prompt: detail,
-    answer: fact.name,
-    phaseLabel: 'I Do — Learn',
-  }
-}
-
-function makeGuided(fact: GeoFact, isReview = false): LessonStep {
-  const choices = shuffle([
-    fact.name,
-    ...distractorsFor(fact, 'name', 3),
-  ])
-  return {
-    id: `guided-${fact.id}-${Math.random().toString(36).slice(2, 7)}`,
-    kind: isReview ? 'review' : 'guided',
-    fact,
-    prompt: fact.clue,
-    answer: fact.name,
-    choices,
-    phaseLabel: isReview ? 'Review' : 'We Do — Practice',
-  }
-}
-
-function makeCapital(fact: GeoFact): LessonStep {
-  const answer = fact.capital!
-  const choices = shuffle([answer, ...distractorsFor(fact, 'capital', 3)])
-  return {
-    id: `cap-${fact.id}-${Math.random().toString(36).slice(2, 7)}`,
-    kind: 'capital',
-    fact,
-    prompt: `What is the capital of ${fact.name}?`,
-    answer,
-    choices,
-    phaseLabel: 'You Do — Capital',
-  }
-}
-
-function makeMap(fact: GeoFact, unitFacts: GeoFact[]): LessonStep {
-  const withPins = unitFacts.filter((f) => f.pin)
-  const options = shuffle(
-    uniqueFacts([
-      fact,
-      ...withPins.filter((f) => f.id !== fact.id),
-    ]),
-  ).slice(0, Math.min(6, Math.max(4, withPins.length)))
-
-  if (!options.find((o) => o.id === fact.id)) {
-    options[0] = fact
-  }
-
-  return {
-    id: `map-${fact.id}-${Math.random().toString(36).slice(2, 7)}`,
-    kind: 'map',
-    fact,
-    prompt: `Tap ${fact.name} on the map`,
-    answer: fact.name,
-    mapOptions: shuffle(options),
-    phaseLabel: 'You Do — Locate',
-  }
+/** Questions for head-to-head play (no typing, so turns stay quick). */
+export function makeDuelQuestion(pool: GeoFact[], used: Set<string>): LessonStep {
+  const fresh = pool.filter((f) => !used.has(f.id))
+  const fact = pick(fresh.length ? fresh : pool)
+  used.add(fact.id)
+  const modes = [...modesFor(fact, 1), ...modesFor(fact, 2)].filter(
+    (m) => m !== 'type' && m !== 'blankmap',
+  )
+  return makeQuestion(fact, pick(modes), 'Head-to-head')
 }

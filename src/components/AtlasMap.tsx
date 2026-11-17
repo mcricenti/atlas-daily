@@ -251,6 +251,9 @@ function UsStatesMap({
   const targetStateName = targetFact?.name
 
   function shouldShowLabel(pin: Pin) {
+    if (feedback && (pin.fact.id === targetId || pin.fact.id === selectedId)) {
+      return true
+    }
     if (resolvedLabels === 'none') return false
     if (resolvedLabels === 'all') return true
     if (resolvedLabels === 'target') {
@@ -286,9 +289,13 @@ function UsStatesMap({
               key={s.id}
               d={s.d}
               fill={
-                isTarget
+                isTarget && feedback
+                  ? '#8fd3b0'
+                  : feedback === 'wrong' && optionFact?.id === selectedId
+                    ? '#f2b5a3'
+                    : isTarget && !interactive
                   ? '#e8d4b8'
-                  : isOption && canTap
+                  : isOption && interactive
                     ? '#efe0c8'
                     : dimmed
                       ? '#8a7a66'
@@ -317,14 +324,13 @@ function UsStatesMap({
 
         {pins.map((pin) => {
           const isTarget = pin.fact.id === targetId
+          // Never highlight the answer before it has been given.
           const isHighlight =
-            pin.fact.id === highlightId || (isTarget && !selectedId)
+            pin.fact.id === highlightId || (isTarget && !interactive)
           const isSelected = pin.fact.id === selectedId
           const wrong =
             feedback === 'wrong' && isSelected && pin.fact.id !== targetId
-          const correct =
-            feedback === 'correct' &&
-            (isSelected || pin.fact.id === targetId)
+          const correct = Boolean(feedback) && isTarget
           const isOption = optionIds.has(pin.fact.id)
           const emphasize = isHighlight || isSelected || correct || wrong
           const showLabel = shouldShowLabel(pin)
@@ -512,9 +518,11 @@ function WorldAtlasMap({
   feedback,
   selectedId,
   large = false,
+  labelMode,
 }: Props) {
   const gradId = useId()
   const canTap = interactive && !disabled
+  const hideNames = labelMode === 'none'
   const [topo, setTopo] = useState<Topology | null>(null)
   const [loadError, setLoadError] = useState(false)
 
@@ -692,6 +700,7 @@ function WorldAtlasMap({
                   />
                 </>
               )}
+              {(!hideNames || emphasize) && (
               <text
                 x={labelX}
                 y={y + (showDot ? 26 : 5) * k}
@@ -710,6 +719,7 @@ function WorldAtlasMap({
               >
                 {fact.name}
               </text>
+              )}
               {canTap && (
                 <circle
                   cx={x}

@@ -27,6 +27,39 @@ Inspired by strong patterns from apps like Yonder, US States Trainer, Geo Touch,
 - **You Do** — capital recall and map location
 - **Spaced review** — due cards return on expanding intervals until mastered
 
+### Long-term spaced review
+
+- Every daily lesson pulls in places that are **due from every unit learned so far**, most overdue first.
+  On heavy review days fewer new places are introduced (3 → 2 → 1 → 0), so lessons stay about 10 minutes.
+- Each correct answer pushes the next review further out (about 1 day → 3 days → a week → weeks → months);
+  a miss brings it back soon and re-asks it later in the same lesson in an easier form (max 5 retries).
+- **Difficulty ladder** — questions get harder as a place becomes familiar:
+  - Level 1: pick from a clue, pick the capital, tap it on a labelled map
+  - Level 2: capital → which place, flags, "which of these shares a border?"
+  - Level 3: type the capital (spelling slips allowed), tap it on a map with no names, "which is bigger?"
+
+### Fun extras
+
+- **My Atlas** — U.S. and world maps that color in as places go from Learning → Strong → Mastered,
+  a **passport** with a stamp (flag) for every country known well, continent badges, and trophies.
+- **Weekly challenge** — opens about once a week after 10 places; 15 harder mixed questions from everything
+  learned, favouring missed places; gold/silver/bronze trophies.
+- **Head-to-head** — two siblings take turns on one tablet, 5 questions each.
+- **Memory tricks** for all 50 state capitals (`src/data/memoryHooks.ts`), shown in tours and after a miss.
+- **Flags** for every country (`public/flags`, from the MIT-licensed flag-icons project).
+
+### Grown-ups page
+
+Behind a simple multiplication gate on the home screen: places learned and mastered, an estimated
+"memory today" score, a 2-week review forecast, a 4-week activity chart, tricky places, and progress by unit.
+
+### Install and offline
+
+The app has a web manifest and a service worker (`public/sw.js`), so it can be added to a tablet's home
+screen and works offline after the first visit. Progress is stored per device.
+
+`src/data/geo/geoFacts.ts` (borders and areas) is generated: `npx tsx scripts/build-geo-facts.ts`.
+
 ### Place tours
 
 Every new place is introduced with a 30–45 second animated tour that plays like a short video:

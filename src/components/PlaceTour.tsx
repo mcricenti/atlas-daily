@@ -683,9 +683,13 @@ export function PlaceTour({ fact, onFinished }: Props) {
                         damping: 20,
                       }}
                     >
-                      <span className="text-2xl sm:text-4xl" aria-hidden>
-                        {card.icon}
-                      </span>
+                      {card.image ? (
+                        <img src={card.image} alt="" className="h-9 w-auto shrink-0 rounded border border-ocean-900/15 sm:h-12" />
+                      ) : (
+                        <span className="text-2xl sm:text-4xl" aria-hidden>
+                          {card.icon}
+                        </span>
+                      )}
                       <span>
                         <span className="block text-[10px] font-extrabold uppercase tracking-[0.16em] text-coral sm:text-xs">
                           {card.label}
@@ -719,9 +723,13 @@ export function PlaceTour({ fact, onFinished }: Props) {
                       exit={{ opacity: 0, x: -30 }}
                       transition={{ duration: 0.25 }}
                     >
-                      <span className="text-3xl" aria-hidden>
-                        {activeCard.icon}
-                      </span>
+                      {activeCard.image ? (
+                        <img src={activeCard.image} alt="" className="h-9 w-auto shrink-0 rounded border border-ocean-900/15" />
+                      ) : (
+                        <span className="text-3xl" aria-hidden>
+                          {activeCard.icon}
+                        </span>
+                      )}
                       <span>
                         <span className="block text-[11px] font-extrabold uppercase tracking-[0.16em] text-coral">
                           {activeCard.label}

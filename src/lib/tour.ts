@@ -1,12 +1,14 @@
 import { FACTS, formatPopulation, type GeoFact } from '../data/curriculum'
 import { FUN_FACTS } from '../data/funFacts'
+import { flagUrl } from '../data/flags'
+import { MEMORY_HOOKS } from '../data/memoryHooks'
 
 export type TourCameraName = 'wide' | 'region' | 'close'
 
-export type TourCard = { icon: string; label: string; text: string }
+export type TourCard = { icon: string; label: string; text: string; image?: string }
 
 export type TourScene = {
-  id: 'find' | 'fly' | 'neighbors' | 'capital' | 'facts' | 'recap'
+  id: 'find' | 'fly' | 'neighbors' | 'capital' | 'trick' | 'facts' | 'recap'
   /** Short chapter name shown on the progress strip */
   title: string
   /** Caption shown under the map */
@@ -185,13 +187,30 @@ export function buildTour(fact: GeoFact, ctx: TourContext): TourScene[] {
       })
     }
 
+    const hook = MEMORY_HOOKS[fact.id]
+    if (hook) {
+      scenes.push({
+        id: 'trick',
+        title: 'Memory trick',
+        caption: 'Here’s a silly trick to remember the capital.',
+        say: `Here’s a silly trick to remember the capital. ${hook}`,
+        camera: 'close',
+        showCapital: true,
+        cards: [{ icon: '🧠', label: 'Memory trick', text: hook }],
+      })
+    }
+
     const cards: TourCard[] = []
     if (fun?.nick) cards.push({ icon: '🏷️', label: 'Nickname', text: fun.nick })
     if (!isState) {
       cards.push({ icon: '🌍', label: 'Continent', text: fact.region })
     }
+    const flag = flagUrl(fact.id)
+    if (flag) {
+      cards.push({ icon: '', image: flag, label: 'Flag', text: `This is the flag of ${theName}.` })
+    }
     const pop = populationCard(fact)
-    if (pop) cards.push(pop)
+    if (pop && !flag) cards.push(pop)
     if (funCard) cards.push(funCard)
     if (cards.length) {
       scenes.push({

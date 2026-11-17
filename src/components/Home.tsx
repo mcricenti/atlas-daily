@@ -1,20 +1,34 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { UNITS, getUnit } from '../data/curriculum'
 import { useApp } from '../state/AppContext'
 import {
+  bossAvailable,
+  daysUntilBoss,
   isUnitUnlocked,
   overallMastery,
   unitProgress,
 } from '../lib/storage'
-import { sessionMeta } from '../lib/session'
+import { dueFacts, sessionMeta } from '../lib/session'
+import { TrophyIcon } from './Trophy'
 
 type Props = {
   onStartLesson: () => void
   onOpenProgress: () => void
+  onOpenAtlas: () => void
+  onStartBoss: () => void
+  onOpenDuel: () => void
+  onOpenGrownUps: () => void
 }
 
-export function Home({ onStartLesson, onOpenProgress }: Props) {
+export function Home({
+  onStartLesson,
+  onOpenProgress,
+  onOpenAtlas,
+  onStartBoss,
+  onOpenDuel,
+  onOpenGrownUps,
+}: Props) {
   const { state, active, addExplorer, setActiveExplorer } = useApp()
   const [name, setName] = useState('')
   const meta = sessionMeta()
@@ -100,6 +114,9 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
   const unit = getUnit(active.currentUnitId)!
   const progress = unitProgress(active, active.currentUnitId)
   const overall = overallMastery(active)
+  const due = dueFacts(active).length
+  const canBoss = bossAvailable(active)
+  const bossWait = daysUntilBoss(active)
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
@@ -148,6 +165,11 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
             Watch a few quick map tours, then play to remember them. Places you
             already know come back so they stick.
           </p>
+          {due > 0 && (
+            <p className="relative mt-3 inline-block rounded-full bg-white/10 px-3 py-1 text-sm font-extrabold text-amber ring-1 ring-white/20">
+              {due} {due === 1 ? 'place is' : 'places are'} ready for review
+            </p>
+          )}
           <div className="relative mt-6 flex flex-wrap gap-3">
             <button
               type="button"
@@ -190,6 +212,36 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
           <MiniStat label="Coins" value={`${active.trailCoins}`} />
         </div>
       </motion.section>
+
+      <section className="mt-6 grid gap-3 sm:grid-cols-3">
+        <HomeTile
+          title="My Atlas"
+          sub="Your map, passport & trophies"
+          onClick={onOpenAtlas}
+          icon={<span className="text-3xl">🗺️</span>}
+        />
+        <HomeTile
+          title="Weekly challenge"
+          sub={
+            canBoss
+              ? 'Ready! Win a trophy'
+              : active.introduced.length < 10
+                ? `Opens after 10 places (${active.introduced.length}/10)`
+                : `Next one in ${bossWait} day${bossWait === 1 ? '' : 's'}`
+          }
+          onClick={onStartBoss}
+          disabled={!canBoss}
+          highlight={canBoss}
+          icon={<TrophyIcon kind="gold" size={34} />}
+        />
+        <HomeTile
+          title="Head-to-head"
+          sub={state.explorers.length > 1 ? 'Play against a sibling' : 'Add a second explorer to play'}
+          onClick={onOpenDuel}
+          disabled={state.explorers.length < 2}
+          icon={<span className="text-3xl">⚔️</span>}
+        />
+      </section>
 
       <section className="mt-10">
         <div className="mb-4 flex items-end justify-between">
@@ -271,7 +323,16 @@ export function Home({ onStartLesson, onOpenProgress }: Props) {
         </ol>
       </section>
 
-      <AddExplorer />
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+        <AddExplorer />
+        <button
+          type="button"
+          onClick={onOpenGrownUps}
+          className="rounded-xl bg-white/70 px-3 py-2 text-sm font-bold text-ocean-700"
+        >
+          Grown-ups
+        </button>
+      </div>
     </div>
   )
 }
@@ -290,6 +351,41 @@ const UNIT_ICONS: Record<string, string> = {
   asia: '🐼',
   'world-rest': '🦘',
   'major-rivers': '🏞️',
+}
+
+function HomeTile({
+  title,
+  sub,
+  icon,
+  onClick,
+  disabled,
+  highlight,
+}: {
+  title: string
+  sub: string
+  icon: ReactNode
+  onClick: () => void
+  disabled?: boolean
+  highlight?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-left transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60 ${
+        highlight
+          ? 'animate-pulse-ring border-amber bg-amber/20'
+          : 'border-ocean-900/10 bg-white/75 hover:bg-white'
+      }`}
+    >
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center">{icon}</span>
+      <span>
+        <span className="block font-extrabold text-ocean-950">{title}</span>
+        <span className="block text-sm font-semibold text-ocean-700">{sub}</span>
+      </span>
+    </button>
+  )
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {
@@ -312,7 +408,7 @@ function AddExplorer() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-8 text-sm font-bold text-ocean-700 underline-offset-2 hover:underline"
+        className="text-sm font-bold text-ocean-700 underline-offset-2 hover:underline"
       >
         Add another explorer
       </button>
@@ -320,7 +416,7 @@ function AddExplorer() {
   }
   return (
     <form
-      className="mt-8 flex flex-wrap gap-2"
+      className="flex flex-wrap gap-2"
       onSubmit={(e) => {
         e.preventDefault()
         addExplorer(name)
