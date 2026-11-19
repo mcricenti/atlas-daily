@@ -1,6 +1,6 @@
 // Offline support: keep a copy of everything the app has loaded.
 // Pages: try the network first so updates show up; files: use the saved copy, refresh it in the background.
-const CACHE = 'atlas-daily-v1'
+const CACHE = 'atlas-daily-v2'
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -39,6 +39,9 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
+  // Hashed JS/CSS: prefer network so curriculum updates reach tablets;
+  // fall back to cache when offline.
+  const isVersionedAsset = /\.(?:js|css)$/.test(url.pathname)
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
       const cached = await cache.match(req)
@@ -48,6 +51,7 @@ self.addEventListener('fetch', (event) => {
           return res
         })
         .catch(() => cached)
+      if (isVersionedAsset) return fresh
       return cached ?? fresh
     }),
   )
