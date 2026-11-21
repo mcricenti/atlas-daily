@@ -236,3 +236,20 @@ button {
     color: black !important;
   }
 }
+
+/* Map games: pulsing ring and blinking course on the highlighted place */
+.game-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: game-ring 1.4s ease-out infinite;
+}
+@keyframes game-ring {
+  0% { transform: scale(0.5); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+.game-blink {
+  animation: game-blink 1.2s ease-in-out infinite;
+}
+@keyframes game-blink {
+  50% { opacity: 0.45; }
+}

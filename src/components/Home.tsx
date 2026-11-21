@@ -11,6 +11,7 @@ import {
 } from '../lib/storage'
 import { dueFacts, sessionMeta } from '../lib/session'
 import { TrophyIcon } from './Trophy'
+import { UNIT_ICONS } from '../data/unitIcons'
 
 type Props = {
   onStartLesson: () => void
@@ -18,6 +19,7 @@ type Props = {
   onOpenAtlas: () => void
   onStartBoss: () => void
   onOpenDuel: () => void
+  onOpenGames: () => void
   onOpenGrownUps: () => void
 }
 
@@ -27,6 +29,7 @@ export function Home({
   onOpenAtlas,
   onStartBoss,
   onOpenDuel,
+  onOpenGames,
   onOpenGrownUps,
 }: Props) {
   const { state, active, addExplorer, setActiveExplorer } = useApp()
@@ -213,7 +216,13 @@ export function Home({
         </div>
       </motion.section>
 
-      <section className="mt-6 grid gap-3 sm:grid-cols-3">
+      <section className="mt-6 grid gap-3 sm:grid-cols-2">
+        <HomeTile
+          title="Map games"
+          sub="Find it! and What’s this?"
+          onClick={onOpenGames}
+          icon={<span className="text-3xl">📍</span>}
+        />
         <HomeTile
           title="My Atlas"
           sub="Your map, passport & trophies"
@@ -337,21 +346,6 @@ export function Home({
   )
 }
 
-const UNIT_ICONS: Record<string, string> = {
-  'us-northeast': '🦞',
-  'us-southeast': '🍑',
-  'us-midwest': '🌽',
-  'us-southwest': '🌵',
-  'us-west': '🏔️',
-  'world-basics': '🌍',
-  'north-america': '🍁',
-  'south-america': '🦜',
-  europe: '🏰',
-  africa: '🦁',
-  asia: '🐼',
-  'world-rest': '🦘',
-  'major-rivers': '🏞️',
-}
 
 function HomeTile({
   title,

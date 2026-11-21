@@ -44,6 +44,14 @@ Inspired by strong patterns from apps like Yonder, US States Trainer, Geo Touch,
   a **passport** with a stamp (flag) for every country known well, continent badges, and trophies.
 - **Weekly challenge** — opens about once a week after 10 places; 15 harder mixed questions from everything
   learned, favouring missed places; gold/silver/bronze trophies.
+- **Map games** (home screen) — two games on real maps, 10 places a round, stars and coins:
+  - **Find it!** — see a name ("Find Texas!"), tap it on the map. A miss shows what was tapped and a hint
+    circle for a second try. Works for states, countries, continents, oceans (tap the water), rivers (tap
+    along the course), mountains and landmarks; tiny islands count if you tap close.
+  - **What's this?** — a place lights up; pick its name from four choices.
+  - A map opens once 3 of its places are learned (all of them once the unit is done), plus an
+    "Everything I've learned" mix. Missed places come back in the next daily lesson. Logic in
+    `src/lib/mapGames.ts`, screen in `src/components/MapGames.tsx`.
 - **Head-to-head** — two siblings take turns on one tablet, 5 questions each.
 - **Memory tricks** for all 50 state capitals (`src/data/memoryHooks.ts`), shown in tours and after a miss.
 - **Flags** for every country (`public/flags`, from the MIT-licensed flag-icons project).

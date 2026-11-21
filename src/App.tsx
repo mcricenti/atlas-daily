@@ -8,6 +8,7 @@ import { UnitPlacementChallenge } from './components/UnitPlacementChallenge'
 import { MyAtlas } from './components/MyAtlas'
 import { HeadToHead } from './components/HeadToHead'
 import { GrownUps } from './components/GrownUps'
+import { MapGames } from './components/MapGames'
 import { markPlacementCleared } from './lib/storage'
 
 type Screen =
@@ -20,6 +21,7 @@ type Screen =
   | 'atlas'
   | 'duel'
   | 'grownups'
+  | 'games'
 
 function Shell() {
   const [screen, setScreenRaw] = useState<Screen>('home')
@@ -40,6 +42,7 @@ function Shell() {
       onOpenAtlas={() => setScreen('atlas')}
       onStartBoss={() => setScreen('boss')}
       onOpenDuel={() => setScreen('duel')}
+      onOpenGames={() => setScreen('games')}
       onOpenGrownUps={() => setScreen('grownups')}
     />
   )
@@ -102,6 +105,9 @@ function Shell() {
       )}
       {screen === 'atlas' && active && (
         <MyAtlas explorer={active} onBack={() => setScreen('home')} />
+      )}
+      {screen === 'games' && active && (
+        <MapGames explorer={active} onUpdate={updateExplorer} onBack={() => setScreen('home')} />
       )}
       {screen === 'duel' && active && (
         <HeadToHead explorers={state.explorers} onBack={() => setScreen('home')} />
