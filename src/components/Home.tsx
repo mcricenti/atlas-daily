@@ -219,7 +219,7 @@ export function Home({
       <section className="mt-6 grid gap-3 sm:grid-cols-2">
         <HomeTile
           title="Map games"
-          sub="Find it! and What’s this?"
+          sub="7 games and a sticker book"
           onClick={onOpenGames}
           icon={<span className="text-3xl">📍</span>}
         />

@@ -253,3 +253,10 @@ button {
 @keyframes game-blink {
   50% { opacity: 0.45; }
 }
+.game-flash {
+  animation: game-flash 0.9s ease-out forwards;
+}
+@keyframes game-flash {
+  0% { opacity: 0.95; }
+  100% { opacity: 0; }
+}

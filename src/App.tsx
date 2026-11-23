@@ -107,7 +107,7 @@ function Shell() {
         <MyAtlas explorer={active} onBack={() => setScreen('home')} />
       )}
       {screen === 'games' && active && (
-        <MapGames explorer={active} onUpdate={updateExplorer} onBack={() => setScreen('home')} />
+        <MapGames explorer={active} explorers={state.explorers} onUpdate={updateExplorer} onBack={() => setScreen('home')} />
       )}
       {screen === 'duel' && active && (
         <HeadToHead explorers={state.explorers} onBack={() => setScreen('home')} />
