@@ -44,14 +44,22 @@ Inspired by strong patterns from apps like Yonder, US States Trainer, Geo Touch,
   a **passport** with a stamp (flag) for every country known well, continent badges, and trophies.
 - **Weekly challenge** — opens about once a week after 10 places; 15 harder mixed questions from everything
   learned, favouring missed places; gold/silver/bronze trophies.
-- **Map games** (home screen) — two games on real maps, 10 places a round, stars and coins:
-  - **Find it!** — see a name ("Find Texas!"), tap it on the map. A miss shows what was tapped and a hint
-    circle for a second try. Works for states, countries, continents, oceans (tap the water), rivers (tap
-    along the course), mountains and landmarks; tiny islands count if you tap close.
-  - **What's this?** — a place lights up; pick its name from four choices.
-  - A map opens once 3 of its places are learned (all of them once the unit is done), plus an
-    "Everything I've learned" mix. Missed places come back in the next daily lesson. Logic in
-    `src/lib/mapGames.ts`, screen in `src/components/MapGames.tsx`.
+- **Map games** (home screen) — seven games on real maps, plus a sticker book:
+  - **Find it!** — see a name, tap it. A miss says what was tapped and draws a hint circle for a second try.
+  - **What's this?** — a place lights up; pick its name from four.
+  - **Capitals** — "Tap the state whose capital is Austin" and "What is the capital of this?", alternating.
+  - **Neighbors** — tap every state or country that touches the highlighted one (borders come from the map data).
+  - **Fill the map** — name by name, fill a whole region against the clock; wrong taps add 3 s; best times saved.
+  - **Expert map** — Find it! with no island dots, no hints and one try; unlocks per map at 90% in Find it!.
+  - **Duel** — two players pass the tablet on the same places: a right tap is 3 points, the closer miss 1.
+  - **Grown-up, beat that!** — after a round, a parent replays the same places and the scores are compared.
+  - After every answer: the flag, a fun fact and (when online) a Wikipedia photo of the capital or place.
+  - **Sticker book** — a sticker for each place answered right on the first try 3 times in any game
+    (separate from the My Atlas passport, which follows daily-lesson strength).
+  - Every daily lesson ends with a 3-question **Map bonus** (Find it! on places from that lesson; skippable).
+  - Maps open once 3 of their places are learned (all once the unit is done). Misses come back in the next
+    daily lesson. Logic: `src/lib/mapGames.ts`, `src/lib/placePhoto.ts`; screens: `src/components/MapGames.tsx`,
+    `src/components/games/`.
 - **Head-to-head** — two siblings take turns on one tablet, 5 questions each.
 - **Memory tricks** for all 50 state capitals (`src/data/memoryHooks.ts`), shown in tours and after a miss.
 - **Flags** for every country (`public/flags`, from the MIT-licensed flag-icons project).

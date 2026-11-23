@@ -21,9 +21,12 @@ import {
   type MapKind,
   type Shape,
 } from './geoData'
-import { isUnitUnlocked, type Explorer } from './storage'
+import { isUnitUnlocked, logAnswer, type Explorer } from './storage'
 
-export type GameMode = 'find' | 'name'
+export type GameMode = 'find' | 'name' | 'capitals' | 'blank' | 'neighbors' | 'fill' | 'duel'
+
+/** One question's style inside a round. */
+export type QType = 'find' | 'name' | 'capital-find' | 'capital-name'
 
 export const ROUND_SIZE = 10
 export const MIN_DECK = 3
@@ -126,10 +129,10 @@ export function centerFor(fact: GeoFact): number {
 }
 
 /** Camera for a question: the whole U.S., the fact's continent, or the whole world. */
-export function viewFor(atlas: Atlas, fact: GeoFact, mode: GameMode = 'find'): Camera {
+export function viewFor(atlas: Atlas, fact: GeoFact, mode: GameMode | QType = 'find'): Camera {
   if (atlas.kind === 'us') return FULL_CAMERA
   // In "What's this?", tiny countries far from their unit's map get a closer look.
-  if (mode === 'name' && fact.kind === 'country' && !CONTINENT_UNITS.has(fact.unitId)) {
+  if ((mode === 'name' || mode === 'capital-name') && fact.kind === 'country' && !CONTINENT_UNITS.has(fact.unitId)) {
     const shape = shapeForFact(atlas, fact)
     const anchor = anchorForFact(atlas, fact)
     const [[x0, y0], [x1, y1]] = shape?.bounds ?? [[0, 0], [0, 0]]
@@ -349,4 +352,185 @@ export function kindHint(fact: GeoFact): string {
   if (fact.kind === 'mountain') return 'Tap where the mountain is.'
   if (fact.kind === 'landmark') return 'Tap where it is.'
   return ''
+}
+
+// ── Which games each map can play ────────────────────────────────
+
+export const EXPERT_UNLOCK = 90
+export const STAMP_AT = 3
+
+const hasShape = (f: GeoFact) => f.kind === 'state' || f.kind === 'country'
+/** Maps whose places sit together, so bordering and fill-in make sense. */
+const NOT_REGIONAL = new Set(['world-basics', 'major-rivers', 'world-rest'])
+
+export function bestKey(mode: GameMode, deckId: string) {
+  return `${mode}:${deckId}`
+}
+
+export function factsForMode(mode: GameMode, deck: Deck): GeoFact[] {
+  if (mode === 'capitals') return deck.facts.filter((f) => f.capital && hasShape(f))
+  if (mode === 'neighbors' || mode === 'fill') {
+    if (NOT_REGIONAL.has(deck.id)) return []
+    const facts = deck.facts.filter(hasShape)
+    // The mix spans the U.S. and the world; fill-in and neighbors use one map at a time.
+    if (deck.id === 'mix') return facts.filter((f) => isUsFact(f))
+    return facts
+  }
+  return deck.facts
+}
+
+/** null when playable, otherwise a short reason for the lock. */
+export function lockReason(mode: GameMode, deck: Deck, explorer: Explorer): string | null {
+  if (!deck.unlocked) return 'Locked — keep going on the learning path'
+  if (deck.facts.length < MIN_DECK) {
+    const n = MIN_DECK - deck.facts.length
+    return `Learn ${n} more place${n === 1 ? '' : 's'} to play`
+  }
+  const facts = factsForMode(mode, deck)
+  if (facts.length < MIN_DECK) {
+    if (mode === 'capitals') return 'No capitals on this map'
+    return mode === 'neighbors' ? 'No neighbors to find on this map' : 'Not a fill-in map'
+  }
+  if (mode === 'blank') {
+    const best = explorer.gameBests?.[bestKey('find', deck.id)] ?? 0
+    if (best < EXPERT_UNLOCK) return `Score ${EXPERT_UNLOCK}% in Find it! to unlock (best ${best}%)`
+  }
+  return null
+}
+
+/** Question styles for a round: capitals mix both directions. */
+export function qTypesFor(mode: GameMode, count: number): QType[] {
+  return Array.from({ length: count }, (_, i): QType => {
+    if (mode === 'name') return 'name'
+    if (mode === 'capitals') return i % 2 === 0 ? 'capital-find' : 'capital-name'
+    return 'find'
+  })
+}
+
+export function buildModeRound(explorer: Explorer, mode: GameMode, deck: Deck, size = ROUND_SIZE): GeoFact[] {
+  const facts = factsForMode(mode, deck)
+  return buildRound(explorer, { ...deck, facts }).slice(0, size)
+}
+
+/** Four capitals to pick from. */
+export function capitalChoicesFor(fact: GeoFact, deck: Deck): string[] {
+  const others = (list: GeoFact[]) =>
+    shuffle(list.filter((f) => f.id !== fact.id && f.capital && f.kind === fact.kind)).map((f) => f.capital!)
+  const picks: string[] = []
+  for (const c of [
+    ...others(deck.facts.filter((f) => f.unitId === fact.unitId)),
+    ...others(deck.facts),
+    ...others(FACTS.filter((f) => f.unitId === fact.unitId)),
+    ...others(FACTS),
+  ]) {
+    if (picks.length >= 3) break
+    if (c !== fact.capital && !picks.includes(c)) picks.push(c)
+  }
+  return shuffle([fact.capital!, ...picks])
+}
+
+export function questionText(q: QType, fact: GeoFact): string {
+  if (q === 'find') return findPrompt(fact)
+  if (q === 'name') return namePrompt(fact)
+  if (q === 'capital-find') return `Tap the ${fact.kind} whose capital is ${fact.capital}!`
+  return `What is the capital of this ${fact.kind}?`
+}
+
+// ── Saving results ───────────────────────────────────────────────
+
+export type GameResult = { fact: GeoFact; stars: number }
+
+/**
+ * Log answers, count first-try answers toward stickers,
+ * and bring misses back in the next daily lesson.
+ */
+export function applyGameResults(explorer: Explorer, results: GameResult[], q: string): Explorer {
+  const now = Date.now()
+  const next: Explorer = { ...explorer, cards: { ...explorer.cards }, stamps: { ...(explorer.stamps ?? {}) } }
+  let log = explorer.log ?? []
+  for (const r of results) {
+    log = logAnswer({ ...next, log }, { t: now, f: r.fact.id, ok: r.stars === 2, q: `game-${q}` })
+    if (r.stars === 2) next.stamps![r.fact.id] = (next.stamps![r.fact.id] ?? 0) + 1
+    const card = next.cards[r.fact.id]
+    if (r.stars < 2 && card && card.dueAt > now) next.cards[r.fact.id] = { ...card, dueAt: now }
+  }
+  next.log = log
+  return next
+}
+
+/** Places that just earned a sticker with this round. */
+export function newStamps(before: Explorer, after: Explorer): string[] {
+  const b = before.stamps ?? {}
+  const a = after.stamps ?? {}
+  return Object.keys(a).filter((id) => (a[id] ?? 0) >= STAMP_AT && (b[id] ?? 0) < STAMP_AT)
+}
+
+export function saveBest(explorer: Explorer, key: string, value: number, lowerIsBetter = false): Explorer {
+  const bests = { ...(explorer.gameBests ?? {}) }
+  const old = bests[key]
+  if (old === undefined || (lowerIsBetter ? value < old : value > old)) bests[key] = value
+  return { ...explorer, gameBests: bests }
+}
+
+// ── Neighbors ────────────────────────────────────────────────────
+
+/** Places that share a border with this one, on the map being shown. */
+export function bordersOf(atlas: Atlas, fact: GeoFact): Shape[] {
+  const shape = shapeForFact(atlas, fact)
+  if (!shape) return []
+  return (atlas.neighbors.get(shape.key) ?? []).map((k) => atlas.byKey.get(k)).filter(Boolean) as Shape[]
+}
+
+/** Camera around a place and everything that touches it. */
+export function neighborCamera(atlas: Atlas, fact: GeoFact): Camera | null {
+  const shape = shapeForFact(atlas, fact)
+  if (!shape) return null
+  const [[tx0, ty0], [tx1, ty1]] = shape.bounds
+  // Huge neighbors (Russia, Canada) would zoom out too far: keep to the area around the place.
+  const reach = Math.min(80, Math.max(tx1 - tx0, ty1 - ty0) * 1.2 + 25)
+  const borders = bordersOf(atlas, fact)
+  // A very wide place (Russia) is framed by its neighbors instead.
+  const wide = tx1 - tx0 > 260
+  const around = wide ? borders.map((b) => b.bounds) : [shape.bounds]
+  const [[ax0, ay0], [ax1, ay1]] = unionBounds(around)
+  const list = [...(wide ? [] : [shape]), ...borders].map((s): Bounds => {
+    const [[x0, y0], [x1, y1]] = s.bounds
+    return [
+      [Math.max(x0, ax0 - reach), Math.max(y0, ay0 - reach)],
+      [Math.min(x1, ax1 + reach), Math.min(y1, ay1 + reach)],
+    ]
+  })
+  return cameraFor(unionBounds(list), 0.15, atlas.kind === 'us' ? 120 : 90)
+}
+
+/** Did this tap land on (or close to a tiny) one of these shapes? */
+export function shapeAtTap(tap: Tap, candidates: Shape[]): Shape | null {
+  if (tap.shape && candidates.some((c) => c.key === tap.shape!.key)) return tap.shape
+  const tol = POINT_TOLERANCE_PX * tap.unitsPerPx
+  let best: Shape | null = null
+  let bestD = Infinity
+  for (const c of candidates) {
+    const [[x0, y0], [x1, y1]] = c.bounds
+    if (Math.max(x1 - x0, y1 - y0) / tap.unitsPerPx >= SMALL_SHAPE_PX) continue
+    const d = Math.hypot(tap.p[0] - c.cx, tap.p[1] - c.cy)
+    if (d <= tol && d < bestD) {
+      best = c
+      bestD = d
+    }
+  }
+  return best
+}
+
+/** Camera for fill-in: the whole map of the deck. */
+export function fillCamera(atlas: Atlas, facts: GeoFact[]): Camera {
+  if (atlas.kind === 'us') return FULL_CAMERA
+  return viewFor(atlas, facts[0])
+}
+
+/** Distance in screen pixels between a tap and the place (0 if on it). */
+export function tapDistancePx(atlas: Atlas, fact: GeoFact, tap: Tap): number {
+  if (tapFinds(atlas, fact, tap)) return 0
+  const target = anchorForFact(atlas, fact) ?? pointForFact(atlas, fact)
+  if (!target) return Infinity
+  return Math.hypot(tap.p[0] - target[0], tap.p[1] - target[1]) / tap.unitsPerPx
 }

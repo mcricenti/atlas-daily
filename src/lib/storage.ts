@@ -24,6 +24,10 @@ export type Explorer = {
   log: AnswerLog[]
   /** Weekly challenge results */
   bosses: BossResult[]
+  /** Map games: best score (percent) or best time (seconds) per game and map, e.g. "find:europe" */
+  gameBests?: Record<string, number>
+  /** Map games: first-try answers per place; 3 earns a sticker */
+  stamps?: Record<string, number>
 }
 
 export type AnswerLog = { t: number; f: string; ok: boolean; q: string }
@@ -58,6 +62,8 @@ export function loadState(): AppState {
       cards: e.cards ?? {},
       log: e.log ?? [],
       bosses: e.bosses ?? [],
+      gameBests: e.gameBests ?? {},
+      stamps: e.stamps ?? {},
     }))
     return parsed
   } catch {

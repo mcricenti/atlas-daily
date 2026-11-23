@@ -1,80 +1,267 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { useMemo, useState } from 'react'
 import { FACTS, type GeoFact } from '../data/curriculum'
 import { UNIT_ICONS } from '../data/unitIcons'
-import { buildAtlas, cameraToViewBox, loadTopo, anchorForFact, MAP_W, type Atlas, type Camera } from '../lib/geoData'
 import {
-  ROUND_SIZE,
-  MIN_DECK,
-  buildRound,
-  centerFor,
-  choicesFor,
-  deckPlayable,
+  EXPERT_UNLOCK,
+  STAMP_AT,
+  applyGameResults,
+  bestKey,
+  buildModeRound,
   decksFor,
-  describeTap,
-  findPrompt,
-  highlightFor,
-  kindHint,
-  mapKindFor,
-  namePrompt,
-  tapFinds,
-  theName,
-  viewFor,
+  factsForMode,
+  lockReason,
+  newStamps,
+  saveBest,
+  shuffle,
   type Deck,
   type GameMode,
-  type Highlight,
-  type Tap,
+  type GameResult,
 } from '../lib/mapGames'
-import { loadVoicePref, speak } from '../lib/narrator'
-import { logAnswer, type AnswerLog, type Explorer } from '../lib/storage'
+import type { Explorer } from '../lib/storage'
 import { Confetti } from './Confetti'
+import { DuelGame } from './games/DuelGame'
+import { FillGame } from './games/FillGame'
+import { DUEL_ROUND, formatTime } from './games/gameKit'
+import { NeighborsGame } from './games/NeighborsGame'
+import { StickerBook, Sticker } from './games/StickerBook'
+import { QuizRound, type QuizMode } from './games/QuizRound'
 
 type Props = {
   explorer: Explorer
+  explorers: Explorer[]
   onUpdate: (e: Explorer) => void
   onBack: () => void
 }
 
 const MODES: { id: GameMode; title: string; sub: string; icon: string }[] = [
-  { id: 'find', title: 'Find it!', sub: 'See a name, tap the place on the map', icon: '👆' },
-  { id: 'name', title: 'What’s this?', sub: 'A place lights up — pick its name', icon: '🔍' },
+  { id: 'find', title: 'Find it!', sub: 'See a name, tap the place', icon: '👆' },
+  { id: 'name', title: 'What’s this?', sub: 'A place lights up — name it', icon: '🔍' },
+  { id: 'capitals', title: 'Capitals', sub: 'Match places and capitals', icon: '🏛️' },
+  { id: 'neighbors', title: 'Neighbors', sub: 'Tap everything that touches it', icon: '🤝' },
+  { id: 'fill', title: 'Fill the map', sub: 'Race the clock', icon: '⏱️' },
+  { id: 'blank', title: 'Expert map', sub: 'No dots, no hints, one try', icon: '🎯' },
+  { id: 'duel', title: 'Duel', sub: 'Pass the tablet — closest tap wins', icon: '⚔️' },
 ]
 
-export function MapGames({ explorer, onUpdate, onBack }: Props) {
-  const [mode, setMode] = useState<GameMode>('find')
-  const [deck, setDeck] = useState<Deck | null>(null)
-  const [roundKey, setRoundKey] = useState(0)
-  const decks = useMemo(() => decksFor(explorer), [explorer])
+const MODE_TITLE = Object.fromEntries(MODES.map((m) => [m.id, m.title])) as Record<GameMode, string>
+const QUIZ_MODES = new Set<GameMode>(['find', 'name', 'capitals', 'blank'])
 
-  if (deck) {
+type Ended = {
+  mode: GameMode
+  deck: Deck
+  facts: GeoFact[]
+  results: GameResult[]
+  seconds?: number
+  coins: number
+  stamps: GeoFact[]
+  newBest: boolean
+  expertUnlocked: boolean
+  best?: number
+}
+
+type View =
+  | { type: 'picker' }
+  | { type: 'stickers' }
+  | { type: 'play'; mode: GameMode; deck: Deck; facts: GeoFact[]; n: number }
+  | { type: 'duel-setup'; deck: Deck }
+  | { type: 'duel'; deck: Deck; players: [string, string]; facts: GeoFact[]; n: number }
+  | { type: 'end'; ended: Ended }
+  | { type: 'parent'; ended: Ended }
+  | { type: 'compare'; ended: Ended; parent: GameResult[]; parentSeconds?: number }
+
+export function MapGames({ explorer, explorers, onUpdate, onBack }: Props) {
+  const [mode, setMode] = useState<GameMode>('find')
+  const [view, setView] = useState<View>({ type: 'picker' })
+  const decks = useMemo(() => decksFor(explorer), [explorer])
+  const toPicker = () => setView({ type: 'picker' })
+
+  function start(m: GameMode, deck: Deck) {
+    if (m === 'duel') {
+      setView({ type: 'duel-setup', deck })
+      return
+    }
+    const facts =
+      m === 'fill'
+        ? factsForMode(m, deck)
+        : m === 'neighbors'
+          ? shuffle(factsForMode(m, deck))
+          : buildModeRound(explorer, m, deck)
+    setView({ type: 'play', mode: m, deck, facts, n: Date.now() })
+  }
+
+  function finished(m: GameMode, deck: Deck, facts: GeoFact[], results: GameResult[], seconds?: number) {
+    let next = applyGameResults(explorer, results, m)
+    const stars = results.reduce((s, r) => s + r.stars, 0)
+    const max = results.length * 2
+    const key = bestKey(m, deck.id)
+    const oldBest = explorer.gameBests?.[key]
+    let newBest = false
+    let coins = 3
+    if (m === 'fill' && seconds !== undefined) {
+      newBest = oldBest === undefined || seconds < oldBest
+      next = saveBest(next, key, seconds, true)
+      if (newBest && oldBest !== undefined) coins += 2
+    } else {
+      const pct = max ? Math.round((stars / max) * 100) : 0
+      newBest = oldBest === undefined || pct > oldBest
+      next = saveBest(next, key, pct)
+      if (stars === max) coins += 2
+    }
+    const findBefore = explorer.gameBests?.[bestKey('find', deck.id)] ?? 0
+    const findAfter = next.gameBests?.[bestKey('find', deck.id)] ?? 0
+    next.trailCoins += coins
+    const stamped = newStamps(explorer, next)
+      .map((id) => FACTS.find((f) => f.id === id))
+      .filter(Boolean) as GeoFact[]
+    onUpdate(next)
+    setView({
+      type: 'end',
+      ended: {
+        mode: m,
+        deck,
+        facts,
+        results,
+        seconds,
+        coins,
+        stamps: stamped,
+        newBest: newBest && oldBest !== undefined,
+        expertUnlocked: m === 'find' && findBefore < EXPERT_UNLOCK && findAfter >= EXPERT_UNLOCK,
+        best: m === 'fill' ? next.gameBests?.[key] : undefined,
+      },
+    })
+  }
+
+  // ── Screens ──
+
+  if (view.type === 'stickers') return <StickerBook explorer={explorer} onBack={toPicker} />
+
+  if (view.type === 'play') {
+    const { mode: m, deck, facts } = view
+    if (QUIZ_MODES.has(m)) {
+      return (
+        <QuizRound
+          key={view.n}
+          mode={m as QuizMode}
+          deck={deck}
+          facts={facts}
+          onExit={toPicker}
+          onFinish={(r) => finished(m, deck, facts, r)}
+        />
+      )
+    }
+    if (m === 'neighbors') {
+      return <NeighborsGame key={view.n} facts={facts} onExit={toPicker} onFinish={(r) => finished(m, deck, facts, r)} />
+    }
     return (
-      <Round
-        key={roundKey}
-        explorer={explorer}
-        mode={mode}
-        deck={deck}
-        onUpdate={onUpdate}
-        onAgain={() => setRoundKey((k) => k + 1)}
-        onExit={() => setDeck(null)}
+      <FillGame
+        key={view.n}
+        facts={facts}
+        best={explorer.gameBests?.[bestKey('fill', deck.id)]}
+        onExit={toPicker}
+        onFinish={(r, s) => finished(m, deck, facts, r, s)}
       />
     )
   }
 
+  if (view.type === 'duel-setup') {
+    const deck = view.deck
+    return (
+      <DuelSetup
+        explorer={explorer}
+        explorers={explorers}
+        deck={deck}
+        onExit={toPicker}
+        onStart={(players) =>
+          setView({ type: 'duel', deck, players, facts: buildModeRound(explorer, 'find', deck, DUEL_ROUND), n: Date.now() })
+        }
+      />
+    )
+  }
+
+  if (view.type === 'duel') {
+    return (
+      <DuelGame
+        key={view.n}
+        players={view.players}
+        facts={view.facts}
+        onExit={toPicker}
+        onAgain={() => setView({ ...view, facts: buildModeRound(explorer, 'find', view.deck, DUEL_ROUND), n: Date.now() })}
+      />
+    )
+  }
+
+  if (view.type === 'end') {
+    const { ended } = view
+    return (
+      <RoundEnd
+        ended={ended}
+        onAgain={() => start(ended.mode, ended.deck)}
+        onExit={toPicker}
+        onParent={
+          QUIZ_MODES.has(ended.mode) || ended.mode === 'fill' ? () => setView({ type: 'parent', ended }) : undefined
+        }
+      />
+    )
+  }
+
+  if (view.type === 'parent') {
+    const { ended } = view
+    if (ended.mode === 'fill') {
+      return (
+        <FillGame
+          facts={ended.facts}
+          onExit={() => setView({ type: 'end', ended })}
+          onFinish={(r, s) => setView({ type: 'compare', ended, parent: r, parentSeconds: s })}
+        />
+      )
+    }
+    return (
+      <QuizRound
+        mode={ended.mode as QuizMode}
+        deck={ended.deck}
+        facts={ended.results.map((r) => r.fact)}
+        player="Grown-up’s turn"
+        exitLabel="← Back"
+        onExit={() => setView({ type: 'end', ended })}
+        onFinish={(r) => setView({ type: 'compare', ended, parent: r })}
+      />
+    )
+  }
+
+  if (view.type === 'compare') {
+    return (
+      <Compare
+        kidName={explorer.name}
+        ended={view.ended}
+        parent={view.parent}
+        parentSeconds={view.parentSeconds}
+        onExit={toPicker}
+      />
+    )
+  }
+
+  // Picker
+  const stampCount = Object.values(explorer.stamps ?? {}).filter((n) => n >= STAMP_AT).length
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <button
-        type="button"
-        onClick={onBack}
-        className="rounded-xl bg-white/70 px-3 py-2 text-sm font-bold text-ocean-900"
-      >
-        ← Home
-      </button>
+      <div className="flex items-center justify-between">
+        <button type="button" onClick={onBack} className="rounded-xl bg-white/70 px-3 py-2 text-sm font-bold text-ocean-900">
+          ← Home
+        </button>
+        <button
+          type="button"
+          onClick={() => setView({ type: 'stickers' })}
+          className="rounded-xl bg-[#1d3557] px-3 py-2 text-sm font-extrabold text-sand-100"
+        >
+          🏷️ Sticker book · {stampCount}
+        </button>
+      </div>
       <header className="mt-6">
         <p className="text-sm font-extrabold uppercase tracking-[0.2em] text-coral">Map games</p>
         <h1 className="mt-1 font-display text-3xl text-ocean-950 sm:text-4xl">Pick a game</h1>
       </header>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {MODES.map((m) => {
           const on = mode === m.id
           return (
@@ -82,36 +269,37 @@ export function MapGames({ explorer, onUpdate, onBack }: Props) {
               key={m.id}
               type="button"
               onClick={() => setMode(m.id)}
-              className={`flex items-center gap-4 rounded-3xl border-4 px-5 py-4 text-left transition ${
+              className={`flex items-center gap-3 rounded-3xl border-4 px-3 py-3 text-left transition ${
                 on ? 'border-amber bg-white shadow-md' : 'border-transparent bg-white/60 hover:bg-white/80'
               }`}
             >
-              <span className="text-4xl" aria-hidden>
+              <span className="text-3xl" aria-hidden>
                 {m.icon}
               </span>
               <span>
-                <span className="block font-display text-2xl text-ocean-950">{m.title}</span>
-                <span className="text-sm font-semibold text-ocean-800/80">{m.sub}</span>
+                <span className="block font-display text-lg leading-tight text-ocean-950 sm:text-xl">{m.title}</span>
+                <span className="text-xs font-semibold text-ocean-800/80">{m.sub}</span>
               </span>
             </button>
           )
         })}
       </div>
 
-      <h2 className="mt-8 font-display text-2xl text-ocean-950">Which places?</h2>
-      <p className="text-sm font-semibold text-ocean-700">
-        New maps open up as you learn more places in your daily lessons.
-      </p>
+      <h2 className="mt-8 font-display text-2xl text-ocean-950">Which map?</h2>
+      <p className="text-sm font-semibold text-ocean-700">New maps open up as you learn more places in your daily lessons.</p>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {decks.map((d) => {
-          const ok = deckPlayable(d)
+          const reason = lockReason(mode, d, explorer)
+          const ok = reason === null
           const icon = d.id === 'mix' ? '⭐' : UNIT_ICONS[d.id] ?? '🗺️'
+          const best = explorer.gameBests?.[bestKey(mode, d.id)]
+          const count = factsForMode(mode, d).length
           return (
             <button
               key={d.id}
               type="button"
               disabled={!ok}
-              onClick={() => setDeck(d)}
+              onClick={() => start(mode, d)}
               className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition ${
                 ok ? 'bg-white/85 shadow-sm hover:bg-white' : 'bg-white/35 opacity-60'
               } ${d.id === 'mix' ? 'sm:col-span-2' : ''}`}
@@ -120,15 +308,12 @@ export function MapGames({ explorer, onUpdate, onBack }: Props) {
                 {ok ? icon : '🔒'}
               </span>
               <span className="flex-1">
-                <span className="block font-extrabold text-ocean-950">{d.title}</span>
+                <span className="block font-extrabold text-ocean-950">
+                  {d.id === 'mix' && (mode === 'fill' || mode === 'neighbors') ? 'All my U.S. states' : d.title}
+                </span>
                 <span className="text-xs font-bold text-ocean-700">
-                  {!d.unlocked
-                    ? 'Locked — keep going on the learning path'
-                    : d.facts.length < MIN_DECK
-                      ? `Learn ${MIN_DECK - d.facts.length} more place${MIN_DECK - d.facts.length === 1 ? '' : 's'} to play`
-                      : d.id === 'mix'
-                        ? `${d.facts.length} places`
-                        : `${d.facts.length} of ${d.total} places`}
+                  {reason ?? `${count} place${count === 1 ? '' : 's'}`}
+                  {ok && best !== undefined && (mode === 'fill' ? ` · best ${formatTime(best)}` : mode !== 'duel' ? ` · best ${best}%` : '')}
                 </span>
               </span>
               {ok && <span className="font-extrabold text-coral">Play ›</span>}
@@ -140,509 +325,181 @@ export function MapGames({ explorer, onUpdate, onBack }: Props) {
   )
 }
 
-// ── One round ────────────────────────────────────────────────────
+// ── Round end ────────────────────────────────────────────────────
 
-type Phase = 'ask' | 'retry' | 'right' | 'reveal'
-
-type Result = { fact: GeoFact; stars: number }
-
-function Round({
-  explorer,
-  mode,
-  deck,
-  onUpdate,
+function RoundEnd({
+  ended,
   onAgain,
   onExit,
+  onParent,
 }: {
-  explorer: Explorer
-  mode: GameMode
-  deck: Deck
-  onUpdate: (e: Explorer) => void
+  ended: Ended
   onAgain: () => void
   onExit: () => void
+  onParent?: () => void
 }) {
-  const [facts] = useState(() => buildRound(explorer, deck))
-  const [idx, setIdx] = useState(0)
-  const [phase, setPhase] = useState<Phase>('ask')
-  const [results, setResults] = useState<Result[]>([])
-  const [message, setMessage] = useState<string>('')
-  const [wrongTap, setWrongTap] = useState<[number, number] | null>(null)
-  const [wrongPick, setWrongPick] = useState<string | null>(null)
-  const saved = useRef(false)
-
-  const fact = facts[idx] as GeoFact | undefined
-  const done = idx >= facts.length
-  const kind = fact ? mapKindFor(fact) : 'us'
-  const centerLon = fact ? centerFor(fact) : 0
-  const atlas = useAtlas(kind, centerLon)
-  const choices = useMemo(() => (fact ? choicesFor(fact, deck) : []), [fact, deck])
-  const camera = useMemo(() => (atlas && fact ? viewFor(atlas, fact, mode) : null), [atlas, fact, mode])
-  // Hint circle sits near (not exactly on) the place.
-  const [hintJitter, setHintJitter] = useState<[number, number]>([0, 0])
-
-  // Read the question aloud.
-  useEffect(() => {
-    if (!fact || !loadVoicePref()) return
-    const text = mode === 'find' ? findPrompt(fact) : namePrompt(fact)
-    return speak(text, () => undefined)
-  }, [fact, mode])
-
-  // Save the round when it ends.
-  useEffect(() => {
-    if (!done || saved.current) return
-    saved.current = true
-    const now = Date.now()
-    const next: Explorer = { ...explorer, cards: { ...explorer.cards } }
-    let log = explorer.log ?? []
-    for (const r of results) {
-      const entry: AnswerLog = { t: now, f: r.fact.id, ok: r.stars === 2, q: `game-${mode}` }
-      log = logAnswer({ ...next, log }, entry)
-      // A miss brings the place back in the next daily lesson.
-      const card = next.cards[r.fact.id]
-      if (r.stars < 2 && card && card.dueAt > now) next.cards[r.fact.id] = { ...card, dueAt: now }
-    }
-    next.log = log
-    const stars = results.reduce((s, r) => s + r.stars, 0)
-    next.trailCoins += 3 + (stars === results.length * 2 ? 2 : 0)
-    onUpdate(next)
-  }, [done, explorer, results, mode, onUpdate])
-
-  function finish(stars: number, text: string) {
-    if (!fact) return
-    setResults((r) => [...r, { fact, stars }])
-    setMessage(text)
-    setPhase(stars > 0 ? 'right' : 'reveal')
-  }
-
-  function next() {
-    setIdx((i) => i + 1)
-    setPhase('ask')
-    setMessage('')
-    setWrongTap(null)
-    setWrongPick(null)
-  }
-
-  // Move on by itself after a correct answer.
-  useEffect(() => {
-    if (phase !== 'right') return
-    const t = window.setTimeout(next, 1700)
-    return () => window.clearTimeout(t)
-  }, [phase])
-
-  function capitalLine(f: GeoFact) {
-    return f.capital ? ` Its capital is ${f.capital}.` : ''
-  }
-
-  function onTap(tap: Tap) {
-    if (!atlas || !fact || (phase !== 'ask' && phase !== 'retry')) return
-    if (tapFinds(atlas, fact, tap)) {
-      setWrongTap(null)
-      finish(phase === 'ask' ? 2 : 1, `Yes! That’s ${theName(fact)}.${capitalLine(fact)}`)
-      return
-    }
-    const what = describeTap(atlas, fact, tap)
-    setWrongTap(tap.p)
-    if (phase === 'ask') {
-      setHintJitter([Math.random() - 0.5, Math.random() - 0.5])
-      setMessage(`${what ? `That’s ${what}. ` : 'Not quite. '}Try again — look inside the circle!`)
-      setPhase('retry')
-    } else {
-      finish(0, `${what ? `That’s ${what}. ` : ''}Here’s ${theName(fact)}!${capitalLine(fact)}`)
-    }
-  }
-
-  function onPick(name: string) {
-    if (!fact || phase !== 'ask') return
-    if (name === fact.name) {
-      finish(2, `Yes! It’s ${theName(fact)}.${capitalLine(fact)}`)
-    } else {
-      setWrongPick(name)
-      finish(0, `It’s ${theName(fact)}.${capitalLine(fact)}`)
-    }
-  }
-
-  if (done) {
-    const stars = results.reduce((s, r) => s + r.stars, 0)
-    const max = results.length * 2
-    const pct = max ? stars / max : 0
-    const missed = results.filter((r) => r.stars < 2).map((r) => r.fact)
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        {pct >= 0.7 && <Confetti />}
-        <div className="rounded-3xl bg-white/90 p-6 text-center shadow-lg sm:p-8">
-          <p className="text-sm font-extrabold uppercase tracking-[0.2em] text-coral">
-            {mode === 'find' ? 'Find it!' : 'What’s this?'} · {deck.title}
-          </p>
-          <h1 className="mt-2 font-display text-4xl text-ocean-950">
-            {pct === 1 ? 'Perfect round!' : pct >= 0.7 ? 'Great job!' : pct >= 0.4 ? 'Nice work!' : 'Good practice!'}
-          </h1>
+  const stars = ended.results.reduce((s, r) => s + r.stars, 0)
+  const max = ended.results.length * 2
+  const pct = max ? stars / max : 0
+  const missed = ended.results.filter((r) => r.stars < 2).map((r) => r.fact)
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      {(pct >= 0.7 || ended.stamps.length > 0 || ended.newBest) && <Confetti />}
+      <div className="rounded-3xl bg-white/90 p-6 text-center shadow-lg sm:p-8">
+        <p className="text-sm font-extrabold uppercase tracking-[0.2em] text-coral">
+          {MODE_TITLE[ended.mode]} · {ended.deck.title}
+        </p>
+        <h1 className="mt-2 font-display text-4xl text-ocean-950">
+          {pct === 1 ? 'Perfect round!' : pct >= 0.7 ? 'Great job!' : pct >= 0.4 ? 'Nice work!' : 'Good practice!'}
+        </h1>
+        {ended.seconds !== undefined ? (
+          <p className="mt-3 font-display text-5xl text-ocean-950">⏱️ {formatTime(ended.seconds)}</p>
+        ) : (
           <p className="mt-3 text-5xl" aria-label={`${stars} of ${max} stars`}>
             ⭐ <span className="font-display text-ocean-950">{stars}</span>
             <span className="text-2xl text-ocean-700"> / {max}</span>
           </p>
-          <p className="mt-2 text-sm font-bold text-ocean-700">
-            +{3 + (pct === 1 ? 2 : 0)} coins
+        )}
+        {ended.newBest && <p className="mt-2 text-lg font-extrabold text-coral">New personal best!</p>}
+        {ended.seconds !== undefined && ended.best !== undefined && !ended.newBest && (
+          <p className="mt-1 text-sm font-bold text-ocean-700">Best: {formatTime(ended.best)}</p>
+        )}
+        <p className="mt-2 text-sm font-bold text-ocean-700">+{ended.coins} coins</p>
+
+        {ended.expertUnlocked && (
+          <p className="mt-4 rounded-2xl bg-amber/25 p-3 font-extrabold text-ocean-950">
+            🎯 You unlocked the Expert map for {ended.deck.title}!
           </p>
-          {missed.length > 0 && (
-            <div className="mt-5 rounded-2xl bg-sand-100 p-4 text-left">
-              <p className="text-sm font-extrabold text-ocean-900">Places to look at again:</p>
-              <p className="mt-1 text-sm font-semibold text-ocean-800">
-                {missed.map((f) => f.name).join(', ')}
-              </p>
+        )}
+
+        {ended.stamps.length > 0 && (
+          <div className="mt-5 rounded-2xl bg-[#fbf6ea] p-4">
+            <p className="font-extrabold text-ocean-950">New sticker{ended.stamps.length > 1 ? 's' : ''} for your sticker book!</p>
+            <div className="mt-3 flex flex-wrap justify-center gap-3">
+              {ended.stamps.map((f) => (
+                <Sticker key={f.id} fact={f} earned />
+              ))}
             </div>
+          </div>
+        )}
+
+        {missed.length > 0 && (
+          <div className="mt-5 rounded-2xl bg-sand-100 p-4 text-left">
+            <p className="text-sm font-extrabold text-ocean-900">Places to look at again:</p>
+            <p className="mt-1 text-sm font-semibold text-ocean-800">{missed.map((f) => f.name).join(', ')}</p>
+          </div>
+        )}
+
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={onAgain} className="rounded-2xl bg-coral py-3.5 text-lg font-extrabold text-white">
+            Play again
+          </button>
+          <button type="button" onClick={onExit} className="rounded-2xl bg-ocean-900 py-3.5 text-lg font-extrabold text-sand-100">
+            Other games
+          </button>
+          {onParent && (
+            <button
+              type="button"
+              onClick={onParent}
+              className="rounded-2xl border-4 border-amber bg-amber/15 py-3 text-lg font-extrabold text-ocean-950 sm:col-span-2"
+            >
+              🧑‍🧒 Grown-up, beat that!
+            </button>
           )}
-          <div className="mt-6 grid gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={onAgain}
-              className="rounded-2xl bg-coral py-3.5 text-lg font-extrabold text-white"
-            >
-              Play again
-            </button>
-            <button
-              type="button"
-              onClick={onExit}
-              className="rounded-2xl bg-ocean-900 py-3.5 text-lg font-extrabold text-sand-100"
-            >
-              Other games
-            </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Compare({
+  kidName,
+  ended,
+  parent,
+  parentSeconds,
+  onExit,
+}: {
+  kidName: string
+  ended: Ended
+  parent: GameResult[]
+  parentSeconds?: number
+  onExit: () => void
+}) {
+  const timed = ended.seconds !== undefined && parentSeconds !== undefined
+  const kid = timed ? ended.seconds! : ended.results.reduce((s, r) => s + r.stars, 0)
+  const grown = timed ? parentSeconds! : parent.reduce((s, r) => s + r.stars, 0)
+  const kidWins = timed ? kid < grown : kid > grown
+  const tie = kid === grown
+  const show = (v: number) => (timed ? formatTime(v) : `⭐ ${v}`)
+  return (
+    <div className="mx-auto max-w-xl px-4 py-8">
+      {(kidWins || tie) && <Confetti />}
+      <div className="rounded-3xl bg-white/90 p-6 text-center shadow-lg sm:p-8">
+        <p className="text-sm font-extrabold uppercase tracking-[0.2em] text-coral">Grown-up challenge</p>
+        <h1 className="mt-2 font-display text-4xl text-ocean-950">
+          {tie ? 'It’s a tie!' : kidWins ? `${kidName} wins!` : 'The grown-up wins this time!'}
+        </h1>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="rounded-2xl bg-[#3a86ff] p-4 text-white">
+            <p className="text-lg font-extrabold">{kidName}</p>
+            <p className="font-display text-3xl">{show(kid)}</p>
+          </div>
+          <div className="rounded-2xl bg-[#d63384] p-4 text-white">
+            <p className="text-lg font-extrabold">Grown-up</p>
+            <p className="font-display text-3xl">{show(grown)}</p>
           </div>
         </div>
-      </div>
-    )
-  }
-
-  const answered = phase === 'right' || phase === 'reveal'
-  const wrongFact = wrongPick ? FACTS.find((f) => f.name === wrongPick && f.kind === fact!.kind) : undefined
-  const starsSoFar = results.reduce((s, r) => s + r.stars, 0)
-
-  return (
-    <div className="mx-auto max-w-5xl px-3 py-6 sm:px-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <button
-          type="button"
-          onClick={onExit}
-          className="rounded-xl bg-white/70 px-3 py-2 text-sm font-bold text-ocean-900"
-        >
-          ← Games
+        <button type="button" onClick={onExit} className="mt-6 w-full rounded-2xl bg-ocean-900 py-3.5 text-lg font-extrabold text-sand-100">
+          Other games
         </button>
-        <div className="flex items-center gap-3 text-sm font-extrabold text-ocean-900">
-          <span>
-            {idx + 1} / {Math.min(ROUND_SIZE, facts.length)}
-          </span>
-          <span className="rounded-full bg-white/80 px-3 py-1">⭐ {starsSoFar}</span>
-        </div>
       </div>
-
-      <div className="mb-3 h-2 overflow-hidden rounded-full bg-white/60">
-        <div
-          className="h-full rounded-full bg-sea-300 transition-all"
-          style={{ width: `${(idx / facts.length) * 100}%` }}
-        />
-      </div>
-
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={fact!.id}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          className="mb-3 rounded-3xl bg-white/90 px-5 py-4 text-center shadow-sm"
-        >
-          <h1 className="font-display text-3xl text-ocean-950 sm:text-4xl">
-            {mode === 'find' ? findPrompt(fact!) : namePrompt(fact!)}
-          </h1>
-          {mode === 'find' && kindHint(fact!) && (
-            <p className="mt-1 text-sm font-bold text-ocean-700">{kindHint(fact!)}</p>
-          )}
-        </motion.div>
-      </AnimatePresence>
-
-      {atlas && camera ? (
-        <GameMap
-          atlas={atlas}
-          camera={camera}
-          tappable={mode === 'find' && !answered}
-          onTap={onTap}
-          highlights={[
-            ...(mode === 'name' || answered
-              ? [{ fact: fact!, color: phase === 'right' ? '#2f9e6e' : '#f4a261', pulse: true }]
-              : []),
-            ...(wrongFact && answered ? [{ fact: wrongFact, color: '#e07a5f', pulse: false }] : []),
-          ]}
-          hint={phase === 'retry' && fact!.kind !== 'continent' ? { fact: fact!, jitter: hintJitter } : null}
-          wrongTap={wrongTap}
-        />
-      ) : (
-        <div className="flex aspect-[16/10] items-center justify-center rounded-3xl bg-ocean-900 text-sm font-bold text-sea-200">
-          Unrolling the map…
-        </div>
-      )}
-
-      <div className="mt-3 min-h-[3.5rem]">
-        {message && (
-          <motion.p
-            key={message}
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className={`rounded-2xl px-4 py-3 text-center text-lg font-extrabold ${
-              phase === 'right'
-                ? 'bg-sea-300/40 text-ocean-950'
-                : phase === 'retry'
-                  ? 'bg-amber/25 text-ocean-950'
-                  : 'bg-coral/15 text-ocean-950'
-            }`}
-          >
-            {message}
-            {wrongFact && answered && (
-              <span className="block text-sm font-bold text-coral">{wrongFact.name} is the red one.</span>
-            )}
-          </motion.p>
-        )}
-      </div>
-
-      {mode === 'name' && (
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          {choices.map((c) => {
-            const isAnswer = answered && c === fact!.name
-            const isWrong = answered && c === wrongPick
-            return (
-              <button
-                key={c}
-                type="button"
-                disabled={answered}
-                onClick={() => onPick(c)}
-                className={`rounded-2xl border-4 px-3 py-4 text-lg font-extrabold transition ${
-                  isAnswer
-                    ? 'border-[#2f9e6e] bg-[#2f9e6e] text-white'
-                    : isWrong
-                      ? 'border-coral bg-coral/15 text-ocean-950'
-                      : 'border-transparent bg-white/90 text-ocean-950 shadow-sm hover:bg-white disabled:opacity-60'
-                }`}
-              >
-                {c}
-              </button>
-            )
-          })}
-        </div>
-      )}
-
-      {phase === 'reveal' && (
-        <button
-          type="button"
-          onClick={next}
-          className="mt-3 w-full rounded-2xl bg-ocean-900 py-3.5 text-lg font-extrabold text-sand-100"
-        >
-          {idx + 1 >= facts.length ? 'See my stars' : 'Next'}
-        </button>
-      )}
     </div>
   )
 }
 
-function useAtlas(kind: 'us' | 'world', centerLon: number): Atlas | null {
-  const [state, setState] = useState<{ key: string; atlas: Atlas } | null>(null)
-  const key = `${kind}:${centerLon}`
-  useEffect(() => {
-    let cancelled = false
-    loadTopo(kind).then((t) => {
-      if (!cancelled) setState({ key, atlas: buildAtlas(t, kind, centerLon) })
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [kind, centerLon, key])
-  return state?.key === key ? state.atlas : null
-}
+// ── Duel setup ───────────────────────────────────────────────────
 
-// ── The map ──────────────────────────────────────────────────────
-
-type MarkedFact = { fact: GeoFact; color: string; pulse: boolean }
-
-function GameMap({
-  atlas,
-  camera,
-  tappable,
-  onTap,
-  highlights,
-  hint,
-  wrongTap,
+function DuelSetup({
+  explorer,
+  explorers,
+  deck,
+  onExit,
+  onStart,
 }: {
-  atlas: Atlas
-  camera: Camera
-  tappable: boolean
-  onTap: (tap: Tap) => void
-  highlights: MarkedFact[]
-  hint: { fact: GeoFact; jitter: [number, number] } | null
-  wrongTap: [number, number] | null
+  explorer: Explorer
+  explorers: Explorer[]
+  deck: Deck
+  onExit: () => void
+  onStart: (players: [string, string]) => void
 }) {
-  const svgRef = useRef<SVGSVGElement | null>(null)
-  const [unitsPerPx, setUnitsPerPx] = useState(camera.w / MAP_W)
-  const clipId = `russia-${atlas.kind}`
-
-  useEffect(() => {
-    const svg = svgRef.current
-    if (!svg) return
-    const measure = () => {
-      const ctm = svg.getScreenCTM()
-      if (ctm && ctm.a) setUnitsPerPx(1 / ctm.a)
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(svg)
-    return () => ro.disconnect()
-  }, [camera])
-
-  const u = unitsPerPx
-  const drawn = highlights.map((h) => ({ ...h, hl: highlightFor(atlas, h.fact, u) }))
-  const filled = new Map<string, { color: string; hl: Highlight }>()
-  for (const d of drawn) for (const k of d.hl.keys) filled.set(k, { color: d.color, hl: d.hl })
-
-  const split = atlas.project(60, 0)?.[0] ?? MAP_W / 2
-  const west = atlas.project(0, 0)?.[0] ?? 0
-
-  function handleClick(e: MouseEvent<SVGSVGElement>) {
-    if (!tappable) return
-    const svg = svgRef.current
-    const ctm = svg?.getScreenCTM()
-    if (!svg || !ctm) return
-    const pt = svg.createSVGPoint()
-    pt.x = e.clientX
-    pt.y = e.clientY
-    const p = pt.matrixTransform(ctm.inverse())
-    const el = (e.target as Element).closest('[data-key]')
-    const key = el?.getAttribute('data-key')
-    onTap({ p: [p.x, p.y], shape: key ? atlas.byKey.get(key) ?? null : null, unitsPerPx: 1 / ctm.a })
-  }
-
-  const hintPoint = hint ? anchorForFact(atlas, hint.fact) : null
-  const hintR = 70 * u
-
+  const others = explorers.filter((e) => e.id !== explorer.id).map((e) => e.name)
+  const options = [...others, 'Grown-up', 'Friend']
   return (
-    <div className="overflow-hidden rounded-3xl border border-ocean-900/15 bg-[#0f5363] shadow-lg">
-      <svg
-        ref={svgRef}
-        viewBox={cameraToViewBox(camera)}
-        className={`block h-auto max-h-[62vh] w-full select-none ${tappable ? 'cursor-crosshair' : ''}`}
-        role="img"
-        aria-label="Map"
-        onClick={handleClick}
-        style={{ touchAction: 'manipulation' }}
-      >
-        <defs>
-          <clipPath id={clipId}>
-            {filled.get(atlas.shapes.find((s) => s.name === 'Russia')?.key ?? '')?.hl.russiaHalf === 'Europe' ? (
-              <rect x={west} y={-1000} width={split - west} height={3000} />
-            ) : (
-              <>
-                <rect x={split} y={-1000} width={4000} height={3000} />
-                <rect x={-4000} y={-1000} width={4000 + 40} height={3000} />
-              </>
-            )}
-          </clipPath>
-        </defs>
-        <rect x={-4000} y={-4000} width={9000} height={9000} fill="#0f5363" />
-        {atlas.shapes.map((s) => {
-          const f = filled.get(s.key)
-          const halfRussia = f?.hl.russiaHalf && s.name === 'Russia'
-          return (
-            <g key={s.key}>
-              <path
-                d={s.d}
-                data-key={s.key}
-                fill={f && !halfRussia ? f.color : '#efe4cd'}
-                stroke="#6b5a42"
-                strokeWidth={0.6}
-                strokeOpacity={0.7}
-                vectorEffect="non-scaling-stroke"
-              />
-              {halfRussia && (
-                <path d={s.d} data-key={s.key} fill={f!.color} clipPath={`url(#${clipId})`} stroke="none" />
-              )}
-            </g>
-          )
-        })}
-        {/* Dots so tiny islands can be seen and tapped */}
-        {atlas.shapes
-          .filter((s) => s.area < 6)
-          .map((s) => (
-            <circle
-              key={`dot-${s.key}`}
-              data-key={s.key}
-              cx={s.cx}
-              cy={s.cy}
-              r={4 * u}
-              fill={filled.get(s.key)?.color ?? '#efe4cd'}
-              stroke="#6b5a42"
-              strokeWidth={0.8}
-              vectorEffect="non-scaling-stroke"
-            />
+    <div className="mx-auto max-w-xl px-4 py-8">
+      <button type="button" onClick={onExit} className="rounded-xl bg-white/70 px-3 py-2 text-sm font-bold text-ocean-900">
+        ← Games
+      </button>
+      <div className="mt-6 rounded-3xl bg-white/90 p-6 text-center shadow-lg">
+        <p className="text-5xl" aria-hidden>
+          ⚔️
+        </p>
+        <h1 className="mt-2 font-display text-3xl text-ocean-950">Who is playing {explorer.name}?</h1>
+        <p className="mt-1 text-sm font-semibold text-ocean-700">
+          {deck.title} · {DUEL_ROUND} places. Take turns tapping — a right tap is 3 points, the closer miss is 1.
+        </p>
+        <div className="mt-5 grid gap-2">
+          {options.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => onStart([explorer.name, name])}
+              className="rounded-2xl bg-[#d63384] py-3.5 text-lg font-extrabold text-white"
+            >
+              {name}
+            </button>
           ))}
-
-        {drawn.map((d, i) => (
-          <Mark key={i} hl={d.hl} color={d.color} pulse={d.pulse} u={u} />
-        ))}
-
-        {hint && hintPoint && (
-          <circle
-            cx={hintPoint[0] + hint.jitter[0] * hintR * 0.8}
-            cy={hintPoint[1] + hint.jitter[1] * hintR * 0.8}
-            r={hintR}
-            fill="#ffffff"
-            fillOpacity={0.14}
-            stroke="#f4a261"
-            strokeWidth={3}
-            strokeDasharray="8 6"
-            vectorEffect="non-scaling-stroke"
-            pointerEvents="none"
-          />
-        )}
-
-        {wrongTap && (
-          <g pointerEvents="none" stroke="#e07a5f" strokeWidth={4} strokeLinecap="round">
-            <line x1={wrongTap[0] - 7 * u} y1={wrongTap[1] - 7 * u} x2={wrongTap[0] + 7 * u} y2={wrongTap[1] + 7 * u} vectorEffect="non-scaling-stroke" />
-            <line x1={wrongTap[0] + 7 * u} y1={wrongTap[1] - 7 * u} x2={wrongTap[0] - 7 * u} y2={wrongTap[1] + 7 * u} vectorEffect="non-scaling-stroke" />
-          </g>
-        )}
-      </svg>
+        </div>
+      </div>
     </div>
   )
-}
-
-function Mark({ hl, color, pulse, u }: { hl: Highlight; color: string; pulse: boolean; u: number }): ReactNode {
-  const parts: ReactNode[] = []
-  if (hl.line) {
-    parts.push(
-      <path key="glow" d={hl.line} fill="none" stroke="#fff" strokeOpacity={0.7} strokeWidth={13} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />,
-      <path key="line" d={hl.line} fill="none" stroke={color} strokeWidth={7} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" className={pulse ? 'game-blink' : undefined} />,
-    )
-  }
-  if (hl.point) {
-    const [x, y] = hl.point
-    if (hl.marker === 'ocean') {
-      parts.push(<circle key="sea" cx={x} cy={y} r={60 * u} fill={color} fillOpacity={0.35} />)
-    }
-    if (hl.marker === 'mountain') {
-      const s = 16 * u
-      parts.push(
-        <path key="mt" d={`M${x},${y - s} L${x + s},${y + s * 0.7} L${x - s},${y + s * 0.7} Z`} fill={color} stroke="#fff" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />,
-      )
-    } else if (hl.marker === 'star') {
-      const pts = Array.from({ length: 10 }, (_, i) => {
-        const r = (i % 2 ? 7 : 17) * u
-        const a = (Math.PI / 5) * i - Math.PI / 2
-        return `${x + r * Math.cos(a)},${y + r * Math.sin(a)}`
-      }).join(' ')
-      parts.push(<polygon key="star" points={pts} fill={color} stroke="#fff" strokeWidth={2.5} vectorEffect="non-scaling-stroke" />)
-    } else if (hl.marker !== 'ocean') {
-      parts.push(<circle key="dot" cx={x} cy={y} r={6 * u} fill={color} stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" />)
-    }
-    if (pulse) {
-      parts.push(
-        <circle key="halo" cx={x} cy={y} r={16 * u} fill="none" stroke="#fff" strokeWidth={3} strokeOpacity={0.9} vectorEffect="non-scaling-stroke" />,
-        <circle key="ring" cx={x} cy={y} r={24 * u} fill="none" stroke={color} strokeWidth={5} vectorEffect="non-scaling-stroke" className="game-ring" />,
-      )
-    }
-  }
-  return <g pointerEvents="none">{parts}</g>
 }

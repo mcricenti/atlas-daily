@@ -21,6 +21,18 @@ import { Confetti } from './Confetti'
 import { PlaceTour } from './PlaceTour'
 import { QuestionView } from './QuestionView'
 import { TrophyIcon } from './Trophy'
+import { QuizRound } from './games/QuizRound'
+import { applyGameResults, shuffle, type Deck } from '../lib/mapGames'
+import type { GeoFact } from '../data/curriculum'
+
+/** Places from today's lesson for the 3-question "Find it!" map bonus at the end. */
+const BONUS_SIZE = 3
+
+function bonusFacts(steps: LessonStep[], explorer: Explorer): GeoFact[] {
+  const seen = new Map<string, GeoFact>()
+  for (const s of steps) if (explorer.introduced.includes(s.fact.id)) seen.set(s.fact.id, s.fact)
+  return shuffle([...seen.values()]).slice(0, BONUS_SIZE)
+}
 
 const MAX_RETRIES = 5
 
@@ -58,6 +70,7 @@ export function LessonPlayer({
   const [done, setDone] = useState(false)
   const [working, setWorking] = useState(explorer)
   const [tourDone, setTourDone] = useState(false)
+  const [bonus, setBonus] = useState<{ deck: Deck; next: Explorer; correct: number; total: number } | null>(null)
 
   const step = steps[index]
   const progress = steps.length ? ((index + (done ? 1 : 0)) / steps.length) * 100 : 0
@@ -88,8 +101,22 @@ export function LessonPlayer({
   }
 
   function advance(next: Explorer, correct = correctCount, total = answered) {
-    if (index + 1 >= steps.length) finish(next, correct, total)
-    else setIndex((i) => i + 1)
+    if (index + 1 < steps.length) {
+      setIndex((i) => i + 1)
+      return
+    }
+    // Daily lessons end with a quick "Find it!" on the map.
+    const facts = boss ? [] : bonusFacts(steps, next)
+    if (facts.length > 0) {
+      setBonus({
+        deck: { id: 'bonus', title: 'Map bonus', facts, total: facts.length, unlocked: true },
+        next,
+        correct,
+        total,
+      })
+      return
+    }
+    finish(next, correct, total)
   }
 
   function onAnswer(correct: boolean) {
@@ -134,6 +161,20 @@ export function LessonPlayer({
     onUpdate(next)
     setTourDone(false)
     advance(next)
+  }
+
+  if (bonus && !done) {
+    return (
+      <QuizRound
+        mode="find"
+        deck={bonus.deck}
+        facts={bonus.deck.facts}
+        player="🗺️ Map bonus"
+        exitLabel="Skip"
+        onExit={() => finish(bonus.next, bonus.correct, bonus.total)}
+        onFinish={(results) => finish(applyGameResults(bonus.next, results, 'bonus'), bonus.correct, bonus.total)}
+      />
+    )
   }
 
   if (!step && !done) {
