@@ -15,7 +15,10 @@ export function voiceKey(text: string): string {
   return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0')
 }
 
-/** The text actually sent to a voice: no curly quotes, and pauses instead of ellipses. */
+/** The text actually sent to a voice: no curly quotes, pauses instead of ellipses/arrows. */
 export function speakableText(text: string): string {
-  return text.replace(/[“”]/g, '').replace(/…/g, ',')
+  return text
+    .replace(/[“”]/g, '')
+    .replace(/…/g, ',')
+    .replace(/\s*→\s*/g, ', ')
 }

@@ -1,40 +1,48 @@
 import { useState, type ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import { UNITS, getUnit } from '../data/curriculum'
+import { SHOP_ITEMS, getAvatarEmoji, isItemOwned } from '../data/shop'
 import { useApp } from '../state/AppContext'
 import {
   bossAvailable,
   daysUntilBoss,
   isUnitUnlocked,
   overallMastery,
+  trickyFacts,
   unitProgress,
 } from '../lib/storage'
 import { dueFacts, sessionMeta } from '../lib/session'
-import { TrophyIcon } from './Trophy'
+import { loadSfxPref, playTap, saveSfxPref } from '../lib/sfx'
 import { UNIT_ICONS } from '../data/unitIcons'
+import { TrophyIcon } from './Trophy'
 
 type Props = {
   onStartLesson: () => void
+  onStartTricky: () => void
   onOpenProgress: () => void
   onOpenAtlas: () => void
+  onOpenGames: () => void
   onStartBoss: () => void
   onOpenDuel: () => void
-  onOpenGames: () => void
+  onOpenShop: () => void
   onOpenGrownUps: () => void
 }
 
 export function Home({
   onStartLesson,
+  onStartTricky,
   onOpenProgress,
   onOpenAtlas,
+  onOpenGames,
   onStartBoss,
   onOpenDuel,
-  onOpenGames,
+  onOpenShop,
   onOpenGrownUps,
 }: Props) {
   const { state, active, addExplorer, setActiveExplorer } = useApp()
   const [name, setName] = useState('')
-  const meta = sessionMeta()
+  const [sfxOn, setSfxOn] = useState(() => loadSfxPref())
+  const meta = sessionMeta(active)
 
   if (!active) {
     return (
@@ -114,12 +122,16 @@ export function Home({
     )
   }
 
-  const unit = getUnit(active.currentUnitId)!
-  const progress = unitProgress(active, active.currentUnitId)
+  const unit = getUnit(active.currentUnitId) ?? UNITS[0]
+  const progress = unitProgress(active, unit.id)
   const overall = overallMastery(active)
   const due = dueFacts(active).length
+  const trickyCount = trickyFacts(active).length
   const canBoss = bossAvailable(active)
   const bossWait = daysUntilBoss(active)
+  const canAffordNew = SHOP_ITEMS.some(
+    (item) => !isItemOwned(active.ownedItems, item) && active.trailCoins >= item.cost,
+  )
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:py-12">
@@ -129,25 +141,40 @@ export function Home({
             Atlas Daily
           </p>
           <h1 className="mt-1 font-display text-3xl text-ocean-950 sm:text-4xl">
-            Hi, {active.name}
+            {getAvatarEmoji(active.avatar)} Hi, {active.name}
           </h1>
           <p className="mt-1 text-ocean-800/80">
             Today&apos;s trail: {unit.title}
           </p>
         </div>
-        {state.explorers.length > 1 && (
-          <select
-            value={active.id}
-            onChange={(e) => setActiveExplorer(e.target.value)}
-            className="rounded-xl border border-ocean-900/15 bg-white/80 px-3 py-2 text-sm font-bold"
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !sfxOn
+              setSfxOn(next)
+              saveSfxPref(next)
+              if (next) playTap()
+            }}
+            title={sfxOn ? 'Sound effects ON' : 'Sound effects OFF'}
+            className="rounded-xl border border-ocean-900/15 bg-white/80 px-3 py-2 text-sm font-bold text-ocean-900"
           >
-            {state.explorers.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        )}
+            {sfxOn ? '🔔' : '🔕'}
+          </button>
+          {state.explorers.length > 1 && (
+            <select
+              value={active.id}
+              onChange={(e) => setActiveExplorer(e.target.value)}
+              className="rounded-xl border border-ocean-900/15 bg-white/80 px-3 py-2 text-sm font-bold"
+            >
+              {state.explorers.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {getAvatarEmoji(e.avatar)} {e.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
       </header>
 
       <motion.section
@@ -206,13 +233,32 @@ export function Home({
             >
               Trail map
             </button>
+            {trickyCount > 0 && (
+              <button
+                type="button"
+                onClick={onStartTricky}
+                className="relative z-20 rounded-2xl bg-amber/20 px-4 py-3.5 text-sm font-extrabold text-amber ring-1 ring-amber/40 backdrop-blur transition hover:bg-amber/30"
+              >
+                🎯 Drill {trickyCount} tricky
+              </button>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-4 border-t border-white/10 bg-ocean-950/40">
           <MiniStat label="Streak" value={`${active.gentleStreak}d`} />
           <MiniStat label="Unit" value={`${progress.pct}%`} />
           <MiniStat label="Mastered" value={`${overall.mastered}`} />
-          <MiniStat label="Coins" value={`${active.trailCoins}`} />
+          <button
+            type="button"
+            onClick={onOpenShop}
+            className="px-3 py-4 text-center transition hover:bg-white/10"
+            title="Open Explorer Shop"
+          >
+            <div className="font-display text-xl text-amber">🪙 {active.trailCoins}</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-sea-200/80">
+              Shop
+            </div>
+          </button>
         </div>
       </motion.section>
 
@@ -225,9 +271,20 @@ export function Home({
         />
         <HomeTile
           title="My Atlas"
-          sub="Your map, passport & trophies"
+          sub="Maps, passport, family trips & trophies"
           onClick={onOpenAtlas}
           icon={<span className="text-3xl">🗺️</span>}
+        />
+        <HomeTile
+          title="Explorer Shop"
+          sub={
+            canAffordNew
+              ? `New gear ready! (🪙 ${active.trailCoins} coins)`
+              : `Avatars, map themes & more (🪙 ${active.trailCoins})`
+          }
+          onClick={onOpenShop}
+          highlight={canAffordNew}
+          icon={<span className="text-3xl">🛍️</span>}
         />
         <HomeTile
           title="Weekly challenge"
@@ -244,10 +301,13 @@ export function Home({
           icon={<TrophyIcon kind="gold" size={34} />}
         />
         <HomeTile
-          title="Head-to-head"
-          sub={state.explorers.length > 1 ? 'Play against a sibling' : 'Add a second explorer to play'}
+          title="Head-to-head & Co-op"
+          sub={
+            state.explorers.length > 1
+              ? 'Sibling duel, grown-up, or team co-op'
+              : 'Challenge a grown-up or team up!'
+          }
           onClick={onOpenDuel}
-          disabled={state.explorers.length < 2}
           icon={<span className="text-3xl">⚔️</span>}
         />
       </section>
@@ -346,7 +406,6 @@ export function Home({
   )
 }
 
-
 function HomeTile({
   title,
   sub,
@@ -433,4 +492,3 @@ function AddExplorer() {
     </form>
   )
 }
-

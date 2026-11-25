@@ -43,7 +43,6 @@ export type Atlas = {
   /** key → keys of shapes that share a border */
   neighbors: Map<string, string[]>
   project: (lon: number, lat: number) => [number, number] | null
-  /** Map coordinates → [longitude, latitude] */
   invert: (x: number, y: number) => [number, number] | null
 }
 
@@ -275,7 +274,7 @@ export function buildAtlas(topo: Topology, kind: MapKind, centerLon = 0): Atlas 
     byKey: new Map(shapes.map((s) => [s.key, s])),
     neighbors,
     project: (lon, lat) => projection([lon, lat]) as [number, number] | null,
-    invert: (x, y) => (projection.invert?.([x, y]) as [number, number] | null) ?? null,
+    invert: (x, y) => (projection.invert ? (projection.invert([x, y]) as [number, number] | null) : null),
   }
   atlasCache.set(cacheKey, atlas)
   return atlas

@@ -13,6 +13,7 @@ import { TourModal } from './TourModal'
 type Props = {
   onBack: () => void
   onStartLesson: () => void
+  onStartUnitDrill: (unitId: string) => void
   onOpenReview: (unitId: string) => void
   onOpenPlacement: (unitId: string) => void
 }
@@ -20,6 +21,7 @@ type Props = {
 export function Progress({
   onBack,
   onStartLesson,
+  onStartUnitDrill,
   onOpenReview,
   onOpenPlacement,
 }: Props) {
@@ -64,6 +66,8 @@ export function Progress({
           const unlocked = isUnitUnlocked(active, unit.id)
           const p = unitProgress(active, unit.id)
           const facts = factsForUnit(unit.id)
+          const readyForGate = unitReadyForPlacement(active, unit.id)
+          const clearedGate = active.placementClearedUnits.includes(unit.id)
           return (
             <section
               key={unit.id}
@@ -107,54 +111,69 @@ export function Progress({
                             title={`Watch the ${fact.name} tour`}
                             className="flex w-full items-center gap-2 rounded-xl bg-sand-100 px-3 py-2 text-left text-sm transition hover:bg-sea-200/60"
                           >
-                          <span
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-coral text-white"
-                            aria-hidden
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </span>
-                          <span className="flex-1 font-bold text-ocean-950">
-                            {fact.name}
-                            {fact.capital ? (
-                              <span className="font-semibold text-ocean-700">
-                                {' '}
-                                · {fact.capital}
-                              </span>
-                            ) : null}
-                            {typeof fact.population === 'number' ? (
-                              <span className="block text-xs font-semibold text-ocean-700">
-                                Pop. {formatPopulation(fact.population)}
-                              </span>
-                            ) : null}
-                          </span>
-                          <span
-                            className={`ml-2 shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
-                              label === 'Mastered'
-                                ? 'bg-sea-300/40 text-ocean-900'
-                                : label === 'Strong'
-                                  ? 'bg-amber/30 text-ocean-900'
-                                  : label === 'Learning' || label === 'Introduced'
-                                    ? 'bg-ocean-900/10 text-ocean-800'
-                                    : 'bg-white text-ocean-700'
-                            }`}
-                          >
-                            {label}
-                          </span>
+                            <span
+                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-coral text-white"
+                              aria-hidden
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z" />
+                              </svg>
+                            </span>
+                            <span className="flex-1 font-bold text-ocean-950">
+                              {fact.name}
+                              {fact.capital ? (
+                                <span className="font-semibold text-ocean-700">
+                                  {' '}
+                                  · {fact.capital}
+                                </span>
+                              ) : null}
+                              {typeof fact.population === 'number' ? (
+                                <span className="block text-xs font-semibold text-ocean-700">
+                                  Pop. {formatPopulation(fact.population)}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span
+                              className={`ml-2 shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide ${
+                                label === 'Mastered'
+                                  ? 'bg-sea-300/40 text-ocean-900'
+                                  : label === 'Strong'
+                                    ? 'bg-amber/30 text-ocean-900'
+                                    : label === 'Learning' || label === 'Introduced'
+                                      ? 'bg-ocean-900/10 text-ocean-800'
+                                      : 'bg-white text-ocean-700'
+                              }`}
+                            >
+                              {label}
+                            </span>
                           </button>
                         </li>
                       )
                     })}
                   </ul>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    {unitReadyForPlacement(active, unit.id) && (
+                    <button
+                      type="button"
+                      onClick={() => onStartUnitDrill(unit.id)}
+                      className="rounded-2xl bg-amber/30 px-4 py-2.5 text-sm font-extrabold text-ocean-950 transition hover:bg-amber/45"
+                    >
+                      ⚡ Quick drill
+                    </button>
+                    {readyForGate ? (
                       <button
                         type="button"
                         onClick={() => onOpenPlacement(unit.id)}
                         className="rounded-2xl bg-coral px-4 py-2.5 text-sm font-extrabold text-white"
                       >
                         Unlock next · place on map
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onOpenPlacement(unit.id)}
+                        className="rounded-2xl bg-sea-300/35 px-4 py-2.5 text-sm font-extrabold text-ocean-950 transition hover:bg-sea-300/55"
+                      >
+                        {clearedGate ? '🗺️ Replay placement' : '🗺️ Place on map'}
                       </button>
                     )}
                     <button
@@ -166,9 +185,9 @@ export function Progress({
                     </button>
                   </div>
                   <p className="mt-2 text-xs font-semibold text-ocean-700">
-                    {unitReadyForPlacement(active, unit.id)
-                      ? 'Drag each state and capital onto the map to open the next section.'
-                      : 'Fill-in blanks with a word bank — on screen or print.'}
+                    {readyForGate
+                      ? 'Drag or tap each place on the map to open the next section.'
+                      : 'Quick drill for quiz prep, map placement, or printable worksheet.'}
                   </p>
                 </>
               )}

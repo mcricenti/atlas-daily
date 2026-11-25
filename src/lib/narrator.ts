@@ -5,6 +5,7 @@
 import { speakableText, voiceKey } from './voiceKey'
 
 const KEY = 'atlas-daily-voice'
+const QUIZ_VOICE_KEY = 'atlas-daily-quiz-voice'
 const BASE = import.meta.env.BASE_URL
 
 let recorded: Set<string> | null = null
@@ -20,6 +21,10 @@ export function loadRecordedVoice(): Promise<void> {
     .catch(() => {
       recorded = new Set()
     })
+}
+
+export function recordedClipKeys(): string[] {
+  return recorded ? [...recorded] : []
 }
 
 function hasDeviceVoice() {
@@ -46,6 +51,22 @@ export function saveVoicePref(on: boolean) {
   }
 }
 
+export function loadQuizVoicePref(): boolean {
+  try {
+    return localStorage.getItem(QUIZ_VOICE_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+export function saveQuizVoicePref(on: boolean) {
+  try {
+    localStorage.setItem(QUIZ_VOICE_KEY, on ? 'on' : 'off')
+  } catch {
+    /* private mode */
+  }
+}
+
 function pickVoice(): SpeechSynthesisVoice | undefined {
   const voices = window.speechSynthesis.getVoices()
   const english = voices.filter((v) => v.lang.toLowerCase().startsWith('en'))
@@ -56,7 +77,7 @@ function pickVoice(): SpeechSynthesisVoice | undefined {
   )
 }
 
-function stopAll() {
+export function stopSpeech() {
   if (current) {
     current.onended = null
     current.onerror = null
@@ -90,7 +111,7 @@ export function speak(text: string, onEnd: () => void): () => void {
     finished = true
     onEnd()
   }
-  stopAll()
+  stopSpeech()
 
   const key = voiceKey(text)
   if (recorded?.has(key)) {
@@ -106,8 +127,21 @@ export function speak(text: string, onEnd: () => void): () => void {
 
   return () => {
     finished = true
-    stopAll()
+    stopSpeech()
   }
+}
+
+/** Fire-and-forget pronunciation helper for quiz prompts and place/capital names. */
+export function pronounce(text: string) {
+  speak(text, () => undefined)
+}
+
+/** Warm the browser cache for an upcoming recorded clip if it exists. */
+export function preloadVoiceLine(text: string) {
+  const key = voiceKey(text)
+  if (!recorded?.has(key)) return
+  const audio = new Audio(`${BASE}voice/${key}.mp3`)
+  audio.preload = 'auto'
 }
 
 export function pauseSpeech() {

@@ -1,6 +1,20 @@
 import { FACTS, UNITS, factsForUnit } from '../data/curriculum'
-import { CAPITAL_COORDS } from '../data/geo/capitalCoords'
 import { newCard, type CardState } from './srs'
+
+export type VisitedPin = {
+  status: 'visited' | 'wishlist'
+  note?: string
+}
+
+export type DuelRecord = {
+  t: number
+  mode: 'duel' | 'grownup' | 'coop'
+  p1: string
+  p2: string
+  s1: number
+  s2: number
+  total: number
+}
 
 export type Explorer = {
   id: string
@@ -28,6 +42,16 @@ export type Explorer = {
   gameBests?: Record<string, number>
   /** Map games: first-try answers per place; 3 earns a sticker */
   stamps?: Record<string, number>
+  /** Explorer Shop personalization */
+  avatar?: string
+  mapTheme?: string
+  passportTheme?: string
+  confettiTheme?: string
+  ownedItems?: string[]
+  /** Family travel pins on My Atlas */
+  visited?: Record<string, VisitedPin>
+  /** Parent-configurable daily new places (1–5, default 3) */
+  dailyNewLimit?: number
 }
 
 export type AnswerLog = { t: number; f: string; ok: boolean; q: string }
@@ -38,6 +62,7 @@ const LOG_CAP = 5000
 export type AppState = {
   explorers: Explorer[]
   activeExplorerId: string | null
+  duelHistory?: DuelRecord[]
 }
 
 const KEY = 'atlas-daily-v1'
@@ -49,25 +74,42 @@ export function todayKey(d = new Date()): string {
   return `${d.getFullYear()}-${m}-${day}`
 }
 
+export function normalizeState(raw: unknown): AppState {
+  if (!raw || typeof raw !== 'object') {
+    return { explorers: [], activeExplorerId: null, duelHistory: [] }
+  }
+  const parsed = raw as Partial<AppState>
+  const explorers = (Array.isArray(parsed.explorers) ? parsed.explorers : []).map((e) => ({
+    ...e,
+    placementClearedUnits: e.placementClearedUnits ?? [],
+    completedUnits: e.completedUnits ?? [],
+    introduced: e.introduced ?? [],
+    cards: e.cards ?? {},
+    log: e.log ?? [],
+    bosses: e.bosses ?? [],
+    gameBests: e.gameBests ?? {},
+    stamps: e.stamps ?? {},
+    ownedItems: e.ownedItems ?? [],
+    visited: e.visited ?? {},
+  }))
+  const activeExplorerId =
+    parsed.activeExplorerId && explorers.some((e) => e.id === parsed.activeExplorerId)
+      ? parsed.activeExplorerId
+      : explorers[0]?.id ?? null
+  return {
+    explorers,
+    activeExplorerId,
+    duelHistory: Array.isArray(parsed.duelHistory) ? parsed.duelHistory.slice(-30) : [],
+  }
+}
+
 export function loadState(): AppState {
   try {
     const raw = localStorage.getItem(KEY)
-    if (!raw) return { explorers: [], activeExplorerId: null }
-    const parsed = JSON.parse(raw) as AppState
-    parsed.explorers = (parsed.explorers ?? []).map((e) => ({
-      ...e,
-      placementClearedUnits: e.placementClearedUnits ?? [],
-      completedUnits: e.completedUnits ?? [],
-      introduced: e.introduced ?? [],
-      cards: e.cards ?? {},
-      log: e.log ?? [],
-      bosses: e.bosses ?? [],
-      gameBests: e.gameBests ?? {},
-      stamps: e.stamps ?? {},
-    }))
-    return parsed
+    if (!raw) return { explorers: [], activeExplorerId: null, duelHistory: [] }
+    return normalizeState(JSON.parse(raw))
   } catch {
-    return { explorers: [], activeExplorerId: null }
+    return { explorers: [], activeExplorerId: null, duelHistory: [] }
   }
 }
 
@@ -93,6 +135,13 @@ export function createExplorer(name: string): Explorer {
     trailCoins: 0,
     log: [],
     bosses: [],
+    avatar: 'av-compass',
+    mapTheme: 'map-classic',
+    passportTheme: 'pass-cream',
+    confettiTheme: 'conf-classic',
+    ownedItems: [],
+    visited: {},
+    dailyNewLimit: 3,
   }
 }
 
@@ -156,17 +205,20 @@ export function unitProgress(explorer: Explorer, unitId: string) {
 export function isUnitUnlocked(explorer: Explorer, unitId: string): boolean {
   const unit = UNITS.find((u) => u.id === unitId)
   if (!unit) return false
+  if (explorer.currentUnitId === unitId) return true
   if (!unit.unlockAfter) return true
   if (explorer.completedUnits.includes(unit.unlockAfter)) return true
+  // Also unlock any unit earlier in the trail than the explorer's current unit
+  const currentOrder = UNITS.find((u) => u.id === explorer.currentUnitId)?.order ?? 1
+  if (unit.order <= currentOrder) return true
   // Also unlock if previous unit is mostly strong
   const prev = unitProgress(explorer, unit.unlockAfter)
   return prev.pct >= 70 && prev.introduced >= prev.total
 }
 
+/** Every unit with places supports the drag/tap map placement gate. */
 export function unitNeedsPlacementGate(unitId: string) {
-  return factsForUnit(unitId).some(
-    (f) => f.kind === 'state' && Boolean(f.capital) && Boolean(CAPITAL_COORDS[f.id]),
-  )
+  return factsForUnit(unitId).length > 0
 }
 
 export function unitReadyForPlacement(explorer: Explorer, unitId?: string) {
@@ -197,7 +249,7 @@ export function markPlacementCleared(
     next.completedUnits = [...next.completedUnits, unitId]
   }
   const following = UNITS.find((u) => u.unlockAfter === unitId)
-  if (following) {
+  if (following && next.currentUnitId === unitId) {
     next.currentUnitId = following.id
   }
   next.trailCoins += 10
@@ -254,4 +306,17 @@ export function overallMastery(explorer: Explorer) {
     (f) => explorer.introduced.includes(f.id) && !explorer.cards[f.id]?.mastered,
   ).length
   return { total, introduced, mastered, learning }
+}
+
+/** Places missed at least once (or struggling), sorted by lapses descending. */
+export function trickyFacts(explorer: Explorer) {
+  return FACTS.filter((f) => {
+    if (!explorer.introduced.includes(f.id)) return false
+    const c = explorer.cards[f.id]
+    return Boolean(c && (c.lapses >= 1 || c.ease < 2.2))
+  }).sort((a, b) => {
+    const ca = explorer.cards[a.id]
+    const cb = explorer.cards[b.id]
+    return (cb?.lapses ?? 0) - (ca?.lapses ?? 0) || (ca?.ease ?? 2.5) - (cb?.ease ?? 2.5)
+  })
 }

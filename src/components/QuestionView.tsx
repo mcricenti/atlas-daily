@@ -2,8 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { flagUrl } from '../data/flags'
 import { MEMORY_HOOKS } from '../data/memoryHooks'
 import { checkTyped } from '../lib/answers'
+import { canSpeak, pronounce, stopSpeech } from '../lib/narrator'
 import type { LessonStep } from '../lib/session'
+import { playCorrect, playWrong } from '../lib/sfx'
 import { AtlasMap } from './AtlasMap'
+import { PinDropMap } from './PinDropMap'
 
 const CHEERS = ['Yes!', 'You got it!', 'Nice work!', 'Exactly right!', 'Great memory!']
 
@@ -15,6 +18,10 @@ type Props = {
   onNext: () => void
   /** Number used to vary the cheer */
   cheerIndex?: number
+  /** Automatically read question prompts aloud */
+  readAloud?: boolean
+  /** Explorer's chosen map theme id */
+  mapThemeId?: string
 }
 
 type Feedback = 'correct' | 'close' | 'wrong' | null
@@ -46,10 +53,18 @@ function Tap({
   )
 }
 
-export function QuestionView({ step, onAnswer, onNext, cheerIndex = 0 }: Props) {
+export function QuestionView({
+  step,
+  onAnswer,
+  onNext,
+  cheerIndex = 0,
+  readAloud = false,
+  mapThemeId,
+}: Props) {
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [pinMiles, setPinMiles] = useState<number | null>(null)
   const [typed, setTyped] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
   const nextRef = useRef(onNext)
@@ -58,6 +73,7 @@ export function QuestionView({ step, onAnswer, onNext, cheerIndex = 0 }: Props) 
   })
 
   const isMap = step.kind === 'map' || step.kind === 'blankmap'
+  const isPin = step.kind === 'pin'
   const capitalQuestion =
     step.kind === 'capital' || step.kind === 'type' || step.kind === 'reverse'
   const hook = capitalQuestion ? MEMORY_HOOKS[step.fact.id] : undefined
@@ -66,19 +82,27 @@ export function QuestionView({ step, onAnswer, onNext, cheerIndex = 0 }: Props) 
     if (step.kind === 'type') inputRef.current?.focus()
   }, [step.kind])
 
+  useEffect(() => {
+    if (!readAloud || !canSpeak()) return
+    pronounce(step.prompt)
+    return () => stopSpeech()
+  }, [step.id, step.prompt, readAloud])
+
   // Right answers move on by themselves; misses wait so there is time to read.
   useEffect(() => {
     if (feedback !== 'correct' && feedback !== 'close') return
     const t = window.setTimeout(
       () => nextRef.current(),
-      step.explain || feedback === 'close' ? 2600 : 1200,
+      step.explain || feedback === 'close' || isPin ? 2600 : 1200,
     )
     return () => window.clearTimeout(t)
-  }, [feedback, step.explain])
+  }, [feedback, step.explain, isPin])
 
   function answer(correct: boolean, close = false) {
     if (feedback) return
     setFeedback(correct ? (close ? 'close' : 'correct') : 'wrong')
+    if (correct) playCorrect()
+    else playWrong()
     onAnswer(correct)
   }
 
@@ -90,15 +114,31 @@ export function QuestionView({ step, onAnswer, onNext, cheerIndex = 0 }: Props) 
 
   const right = feedback === 'correct' || feedback === 'close'
   const flag = step.kind === 'flag' ? flagUrl(step.fact.id) : null
+  const speakable = canSpeak()
 
   return (
     <div>
-      <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-ocean-700">
-        {step.phaseLabel}
-      </p>
-      <h2 className="mt-2 font-display text-2xl text-ocean-950 sm:text-3xl">
-        {step.prompt}
-      </h2>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-ocean-700">
+            {step.kind === 'between' ? `🚗 ${step.phaseLabel}` : step.kind === 'pin' ? `🎯 ${step.phaseLabel}` : step.phaseLabel}
+          </p>
+          <h2 className="mt-2 font-display text-2xl text-ocean-950 sm:text-3xl">
+            {step.prompt}
+          </h2>
+        </div>
+        {speakable && (
+          <button
+            type="button"
+            onClick={() => pronounce(step.prompt)}
+            title="Hear this read aloud"
+            aria-label="Hear question aloud"
+            className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sand-100 text-lg text-ocean-900 shadow-sm transition hover:bg-sea-200/70"
+          >
+            🔊
+          </button>
+        )}
+      </div>
 
       {flag && (
         <img
@@ -234,13 +274,30 @@ export function QuestionView({ step, onAnswer, onNext, cheerIndex = 0 }: Props) 
         </div>
       )}
 
+      {isPin && step.mapOptions && (
+        <div className="mt-5">
+          <PinDropMap
+            fact={step.fact}
+            regionFacts={step.mapOptions}
+            disabled={Boolean(feedback)}
+            mapThemeId={mapThemeId}
+            onDrop={(res) => {
+              setPinMiles(res.miles)
+              answer(res.correct, res.close)
+            }}
+          />
+        </div>
+      )}
+
       <div className="mt-4 min-h-[1.75rem]" aria-live="polite">
         {right && (
           <div className="animate-pop text-center">
             <p className="text-lg font-extrabold text-moss">
-              {feedback === 'close'
-                ? `Close enough! It’s spelled ${step.answer}.`
-                : `${CHEERS[cheerIndex % CHEERS.length]} ${correctLine(step)}`}
+              {isPin && pinMiles !== null
+                ? `${CHEERS[cheerIndex % CHEERS.length]} Only ${pinMiles.toLocaleString()} miles from ${step.answer}!`
+                : feedback === 'close'
+                  ? `Close enough! It’s spelled ${step.answer}.`
+                  : `${CHEERS[cheerIndex % CHEERS.length]} ${correctLine(step)}`}
             </p>
             {step.explain && (
               <p className="mt-1 font-semibold text-ocean-800">{step.explain}</p>
@@ -249,7 +306,23 @@ export function QuestionView({ step, onAnswer, onNext, cheerIndex = 0 }: Props) 
         )}
         {feedback === 'wrong' && (
           <div className="animate-pop rounded-2xl bg-coral/10 px-4 py-3 text-center">
-            <p className="text-lg font-extrabold text-coral">{wrongLine(step)}</p>
+            <div className="flex items-center justify-center gap-2">
+              <p className="text-lg font-extrabold text-coral">
+                {isPin && pinMiles !== null
+                  ? `That was ${pinMiles.toLocaleString()} miles away — the gold star marks ${step.answer}.`
+                  : wrongLine(step)}
+              </p>
+              {speakable && (
+                <button
+                  type="button"
+                  onClick={() => pronounce(`${step.fact.name}${step.fact.capital ? `, ${step.fact.capital}` : ''}`)}
+                  title="Hear pronunciation"
+                  className="rounded-full bg-white/80 px-2 py-1 text-sm shadow-sm"
+                >
+                  🔊
+                </button>
+              )}
+            </div>
             {step.explain && (
               <p className="mt-1 font-semibold text-ocean-800">{step.explain}</p>
             )}
@@ -283,6 +356,7 @@ function correctLine(step: LessonStep) {
     case 'flag':
       return `That’s the flag of ${step.fact.name}.`
     case 'neighbor':
+    case 'between':
     case 'bigger':
       return ''
     default:
@@ -303,6 +377,7 @@ function wrongLine(step: LessonStep) {
     case 'blankmap':
       return `Not quite. ${step.fact.name} is the one marked on the map.`
     case 'neighbor':
+    case 'between':
       return `Not quite. The answer is ${step.answer}.`
     case 'bigger':
       return `Not quite. ${step.answer} is bigger.`

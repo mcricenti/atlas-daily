@@ -1,7 +1,9 @@
 import { FACTS, factsForUnit, distractorsFor, type GeoFact } from '../data/curriculum'
 import { ISO2 } from '../data/flags'
+import { CAPITAL_COORDS } from '../data/geo/capitalCoords'
 import { GEO_FACTS } from '../data/geo/geoFacts'
-import { ensureCard, type Explorer } from './storage'
+import { WORLD_PLACES } from '../data/geo/worldCoords'
+import { ensureCard, trickyFacts, type Explorer } from './storage'
 import { isDue, type CardState } from './srs'
 
 /**
@@ -15,9 +17,11 @@ export type QuestionKind =
   | 'map' // tap the place on a labelled map
   | 'flag' // flag → pick the country
   | 'neighbor' // which of these shares a border with it?
+  | 'between' // road trip! which place sits between A and B?
   | 'bigger' // which of two places is bigger?
   | 'type' // type the capital from memory
   | 'blankmap' // tap the place on a map with no names
+  | 'pin' // drop a pin near the capital/place and measure distance in miles
 
 export type StepKind = 'teach' | QuestionKind
 
@@ -40,14 +44,15 @@ export type LessonStep = {
   fromEarlierUnit?: boolean
 }
 
-const MINUTES_HINT = 10
 const MAX_NEW = 3
 const MAX_REVIEWS = 18
 const MIN_REVIEWS = 4
 const DAY = 24 * 60 * 60 * 1000
 
-export function sessionMeta() {
-  return { minutes: MINUTES_HINT, newPerDay: MAX_NEW }
+export function sessionMeta(explorer?: Explorer | null) {
+  const newPerDay = explorer?.dailyNewLimit ?? MAX_NEW
+  const minutes = Math.max(5, Math.round(6 + newPerDay * 1.4))
+  return { minutes, newPerDay }
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -83,12 +88,36 @@ function neighborFacts(fact: GeoFact): GeoFact[] {
     .filter(Boolean) as GeoFact[]
 }
 
+/** Finds two neighbors of `fact` that don't directly touch each other (a clean road-trip pair). */
+function betweenPair(fact: GeoFact): [GeoFact, GeoFact] | null {
+  const near = neighborFacts(fact)
+  if (near.length < 2) return null
+  const pairs: [GeoFact, GeoFact][] = []
+  for (let i = 0; i < near.length; i++) {
+    for (let j = i + 1; j < near.length; j++) {
+      const a = near[i]
+      const b = near[j]
+      const aNeighbors = GEO_FACTS[a.id]?.neighbors ?? []
+      if (!aNeighbors.includes(b.id)) {
+        pairs.push([a, b])
+      }
+    }
+  }
+  return pairs.length ? pick(pairs) : null
+}
+
+function hasPinCoords(fact: GeoFact): boolean {
+  return Boolean(CAPITAL_COORDS[fact.id] || WORLD_PLACES[fact.id])
+}
+
 /** Which question types suit this place at this level. */
 export function modesFor(fact: GeoFact, tier: 1 | 2 | 3): QuestionKind[] {
   const hasCapital = Boolean(fact.capital)
   const hasFlag = Boolean(ISO2[fact.id])
   const hasNeighbors = neighborFacts(fact).length > 0
+  const hasBetween = Boolean(betweenPair(fact))
   const hasArea = Boolean(GEO_FACTS[fact.id]?.areaSqMi)
+  const hasPin = hasPinCoords(fact)
   const modes: QuestionKind[] = []
   if (tier === 1) {
     modes.push('name')
@@ -99,12 +128,15 @@ export function modesFor(fact: GeoFact, tier: 1 | 2 | 3): QuestionKind[] {
     if (hasCapital) modes.push('reverse', 'capital')
     if (hasFlag) modes.push('flag')
     if (hasNeighbors) modes.push('neighbor')
+    if (hasBetween) modes.push('between')
     if (!hasCapital) modes.push('name')
   } else {
     modes.push('blankmap')
     if (hasCapital) modes.push('type', 'type')
+    if (hasPin) modes.push('pin')
     if (hasFlag) modes.push('flag')
     if (hasNeighbors) modes.push('neighbor')
+    if (hasBetween) modes.push('between')
     if (hasArea) modes.push('bigger')
   }
   return modes
@@ -188,6 +220,31 @@ export function makeQuestion(
         explain: `${fact.name} borders ${listNames(names)}.`,
       }
     }
+    case 'between': {
+      const pair = betweenPair(fact)
+      if (!pair) return makeQuestion(fact, 'neighbor', phaseLabel)
+      const [a, b] = pair
+      const aSet = new Set(GEO_FACTS[a.id]?.neighbors ?? [])
+      const bSet = new Set(GEO_FACTS[b.id]?.neighbors ?? [])
+      const distractors = shuffle(
+        FACTS.filter(
+          (f) =>
+            f.kind === fact.kind &&
+            f.id !== fact.id &&
+            f.id !== a.id &&
+            f.id !== b.id &&
+            !(aSet.has(f.id) && bSet.has(f.id)) &&
+            (f.region === fact.region || f.unitId === fact.unitId),
+        ),
+      ).slice(0, 3)
+      return {
+        ...base,
+        prompt: `Road trip! Which ${sizeWord(fact)} sits between ${a.name} and ${b.name}?`,
+        answer: fact.name,
+        choices: shuffle([fact.name, ...distractors.map((f) => f.name)]),
+        explain: `${fact.name} connects ${a.name} and ${b.name} on the map.`,
+      }
+    }
     case 'bigger': {
       const mine = GEO_FACTS[fact.id].areaSqMi
       const others = FACTS.filter((f) => {
@@ -207,6 +264,18 @@ export function makeQuestion(
         answer: big.name,
         choices: shuffle([fact.name, other.name]),
         explain: `${big.name} is about ${timesWord(ratio)} as big as ${small.name}.`,
+      }
+    }
+    case 'pin': {
+      const own = factsForUnit(fact.unitId).filter((f) => f.id !== fact.id)
+      const options = [fact, ...own]
+      return {
+        ...base,
+        prompt: fact.capital
+          ? `Drop a pin on ${fact.capital} (${fact.name})!`
+          : `Drop a pin on ${fact.name}!`,
+        answer: fact.capital ?? fact.name,
+        mapOptions: options,
       }
     }
     case 'map':
@@ -275,10 +344,17 @@ export function dueFacts(explorer: Explorer, now = Date.now()): GeoFact[] {
 export function buildDailySession(explorer: Explorer): LessonStep[] {
   const now = Date.now()
   const due = dueFacts(explorer, now)
+  const limit = Math.max(1, Math.min(5, explorer.dailyNewLimit ?? MAX_NEW))
 
   // Fewer new places on days with lots to review, so lessons stay ~10 minutes.
   const newCount =
-    due.length >= 25 ? 0 : due.length >= 15 ? 1 : due.length >= 8 ? 2 : MAX_NEW
+    due.length >= 25
+      ? 0
+      : due.length >= 15
+        ? Math.min(1, limit)
+        : due.length >= 8
+          ? Math.min(2, limit)
+          : limit
   const newFacts = factsForUnit(explorer.currentUnitId)
     .filter((f) => !explorer.introduced.includes(f.id))
     .slice(0, newCount)
@@ -332,13 +408,45 @@ export function buildBossSession(explorer: Explorer, count = 15): LessonStep[] {
   })
 }
 
-/** Questions for head-to-head play (no typing, so turns stay quick). */
+/** Focused 5-minute drill targeting places the explorer has missed or struggled with. */
+export function buildTrickySession(explorer: Explorer, count = 8): LessonStep[] {
+  const tricky = trickyFacts(explorer)
+  const pool =
+    tricky.length > 0
+      ? tricky.slice(0, count)
+      : shuffle(FACTS.filter((f) => explorer.introduced.includes(f.id))).slice(0, count)
+  return shuffle(pool).map((f) => {
+    const step = makeReview(explorer, f, 1)
+    step.phaseLabel = 'Tricky places drill'
+    return step
+  })
+}
+
+/** Quick focused drill for any specific unit (great before a school quiz!). */
+export function buildUnitDrillSession(
+  explorer: Explorer,
+  unitId: string,
+  count = 10,
+): LessonStep[] {
+  const unitFacts = factsForUnit(unitId)
+  const chosen = shuffle(unitFacts).slice(0, Math.min(count, unitFacts.length))
+  return chosen.map((f) => {
+    const introduced = explorer.introduced.includes(f.id)
+    const step = introduced
+      ? makeReview(explorer, f, 1)
+      : makeQuestion(f, pick(modesFor(f, 1)), 'Unit drill')
+    step.phaseLabel = 'Unit quick drill'
+    return step
+  })
+}
+
+/** Questions for head-to-head play (no typing or slow pin-drop, so turns stay quick). */
 export function makeDuelQuestion(pool: GeoFact[], used: Set<string>): LessonStep {
   const fresh = pool.filter((f) => !used.has(f.id))
   const fact = pick(fresh.length ? fresh : pool)
   used.add(fact.id)
   const modes = [...modesFor(fact, 1), ...modesFor(fact, 2)].filter(
-    (m) => m !== 'type' && m !== 'blankmap',
+    (m) => m !== 'type' && m !== 'blankmap' && m !== 'pin',
   )
   return makeQuestion(fact, pick(modes), 'Head-to-head')
 }

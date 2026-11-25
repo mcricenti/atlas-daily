@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { getUnit, type GeoFact } from '../data/curriculum'
+import { applyGameResults, shuffle, type Deck } from '../lib/mapGames'
+import { QuizRound } from './games/QuizRound'
 import {
   ensureCard,
   logAnswer,
@@ -11,38 +14,42 @@ import {
 import {
   buildBossSession,
   buildDailySession,
+  buildTrickySession,
+  buildUnitDrillSession,
   makeRetry,
   sessionMeta,
+  tierFor,
   type LessonStep,
   type QuestionKind,
 } from '../lib/session'
+import { loadQuizVoicePref, saveQuizVoicePref, stopSpeech } from '../lib/narrator'
+import { playFanfare } from '../lib/sfx'
 import { reviewCard, type Grade } from '../lib/srs'
 import { Confetti } from './Confetti'
 import { PlaceTour } from './PlaceTour'
 import { QuestionView } from './QuestionView'
 import { TrophyIcon } from './Trophy'
-import { QuizRound } from './games/QuizRound'
-import { applyGameResults, shuffle, type Deck } from '../lib/mapGames'
-import type { GeoFact } from '../data/curriculum'
 
-/** Places from today's lesson for the 3-question "Find it!" map bonus at the end. */
+const MAX_RETRIES = 5
 const BONUS_SIZE = 3
 
 function bonusFacts(steps: LessonStep[], explorer: Explorer): GeoFact[] {
   const seen = new Map<string, GeoFact>()
-  for (const s of steps) if (explorer.introduced.includes(s.fact.id)) seen.set(s.fact.id, s.fact)
+  for (const s of steps) {
+    if (explorer.introduced.includes(s.fact.id)) seen.set(s.fact.id, s.fact)
+  }
   return shuffle([...seen.values()]).slice(0, BONUS_SIZE)
 }
 
-const MAX_RETRIES = 5
+export type LessonMode = 'daily' | 'boss' | 'tricky' | 'unit'
 
 type Props = {
   explorer: Explorer
   onUpdate: (explorer: Explorer) => void
   onExit: () => void
   onStartPlacement?: (unitId: string) => void
-  /** 'boss' runs the weekly challenge instead of the daily lesson */
-  mode?: 'daily' | 'boss'
+  mode?: LessonMode
+  drillUnitId?: string
 }
 
 /** Copy enough of an explorer that changing it won't touch the saved one. */
@@ -56,12 +63,17 @@ export function LessonPlayer({
   onExit,
   onStartPlacement,
   mode = 'daily',
+  drillUnitId,
 }: Props) {
   const boss = mode === 'boss'
-  const [steps, setSteps] = useState<LessonStep[]>(() =>
-    boss ? buildBossSession(explorer) : buildDailySession(explorer),
-  )
-  const meta = sessionMeta()
+  const isDrill = mode === 'tricky' || mode === 'unit'
+  const [steps, setSteps] = useState<LessonStep[]>(() => {
+    if (mode === 'boss') return buildBossSession(explorer)
+    if (mode === 'tricky') return buildTrickySession(explorer)
+    if (mode === 'unit' && drillUnitId) return buildUnitDrillSession(explorer, drillUnitId)
+    return buildDailySession(explorer)
+  })
+  const meta = sessionMeta(explorer)
   const [index, setIndex] = useState(0)
   const [correctCount, setCorrectCount] = useState(0)
   const [answered, setAnswered] = useState(0)
@@ -70,10 +82,25 @@ export function LessonPlayer({
   const [done, setDone] = useState(false)
   const [working, setWorking] = useState(explorer)
   const [tourDone, setTourDone] = useState(false)
-  const [bonus, setBonus] = useState<{ deck: Deck; next: Explorer; correct: number; total: number } | null>(null)
+  const [bonus, setBonus] = useState<{
+    deck: Deck
+    next: Explorer
+    correct: number
+    total: number
+  } | null>(null)
+  const [readAloud, setReadAloud] = useState(() => loadQuizVoicePref())
+  const stepStartRef = useRef<number>(0)
 
   const step = steps[index]
   const progress = steps.length ? ((index + (done ? 1 : 0)) / steps.length) * 100 : 0
+
+  useEffect(() => {
+    stepStartRef.current = Date.now()
+  }, [index])
+
+  useEffect(() => {
+    return () => stopSpeech()
+  }, [])
 
   function markIntroduced(next: Explorer, factId: string) {
     if (!next.introduced.includes(factId)) {
@@ -84,20 +111,26 @@ export function LessonPlayer({
   }
 
   function finish(next: Explorer, correct: number, total: number) {
-    let finished = recordSessionComplete(next)
-    if (boss) {
-      const trophy = trophyFor(correct, total)
-      finished = {
-        ...finished,
-        bosses: [...(finished.bosses ?? []), { t: Date.now(), correct, total }],
-        trailCoins:
-          finished.trailCoins +
-          (trophy === 'gold' ? 20 : trophy === 'silver' ? 12 : trophy === 'bronze' ? 6 : 0),
+    let finished: Explorer
+    if (isDrill) {
+      finished = { ...next, trailCoins: next.trailCoins + 3 }
+    } else {
+      finished = recordSessionComplete(next)
+      if (boss) {
+        const trophy = trophyFor(correct, total)
+        finished = {
+          ...finished,
+          bosses: [...(finished.bosses ?? []), { t: Date.now(), correct, total }],
+          trailCoins:
+            finished.trailCoins +
+            (trophy === 'gold' ? 20 : trophy === 'silver' ? 12 : trophy === 'bronze' ? 6 : 0),
+        }
       }
     }
     setWorking(finished)
     onUpdate(finished)
     setDone(true)
+    playFanfare()
   }
 
   function advance(next: Explorer, correct = correctCount, total = answered) {
@@ -105,8 +138,8 @@ export function LessonPlayer({
       setIndex((i) => i + 1)
       return
     }
-    // Daily lessons end with a quick "Find it!" on the map.
-    const facts = boss ? [] : bonusFacts(steps, next)
+    // Daily lessons end with a quick 3-question "Find it!" map bonus.
+    const facts = mode === 'daily' ? bonusFacts(steps, next) : []
     if (facts.length > 0) {
       setBonus({
         deck: { id: 'bonus', title: 'Map bonus', facts, total: facts.length, unlocked: true },
@@ -123,7 +156,10 @@ export function LessonPlayer({
     const next = cloneExplorer(working)
     markIntroduced(next, step.fact.id)
     const card = ensureCard(next, step.fact.id)
-    const grade: Grade = !correct ? 0 : step.retry ? 1 : 2
+    const elapsed = stepStartRef.current ? Date.now() - stepStartRef.current : 99999
+    const fastEasy =
+      correct && !step.retry && !boss && tierFor(card) >= 2 && elapsed < 5000
+    const grade: Grade = !correct ? 0 : step.retry ? 1 : fastEasy ? 3 : 2
     next.cards[step.fact.id] = reviewCard({ ...card }, grade)
     next.totalAnswered += 1
     if (correct) next.totalCorrect += 1
@@ -172,7 +208,9 @@ export function LessonPlayer({
         player="🗺️ Map bonus"
         exitLabel="Skip"
         onExit={() => finish(bonus.next, bonus.correct, bonus.total)}
-        onFinish={(results) => finish(applyGameResults(bonus.next, results, 'bonus'), bonus.correct, bonus.total)}
+        onFinish={(results) =>
+          finish(applyGameResults(bonus.next, results, 'bonus'), bonus.correct, bonus.total)
+        }
       />
     )
   }
@@ -182,7 +220,9 @@ export function LessonPlayer({
       <div className="mx-auto max-w-lg rounded-3xl bg-white/80 p-8 text-center shadow-sm">
         <h2 className="font-display text-2xl text-ocean-900">All caught up!</h2>
         <p className="mt-2 text-ocean-800/80">
-          Nothing is due right now. Come back tomorrow for fresh practice.
+          {mode === 'tricky'
+            ? 'No tricky places left right now — awesome memory!'
+            : 'Nothing is due right now. Come back tomorrow for fresh practice.'}
         </p>
         <button
           type="button"
@@ -197,15 +237,16 @@ export function LessonPlayer({
 
   if (done) {
     const accuracy = answered ? Math.round((correctCount / answered) * 100) : 100
-    const needsPlacement = !boss && unitReadyForPlacement(working)
+    const needsPlacement = mode === 'daily' && unitReadyForPlacement(working)
     const trophy = boss ? trophyFor(correctCount, answered) : null
+    const drillUnit = drillUnitId ? getUnit(drillUnitId) : null
     return (
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         className="mx-auto max-w-lg rounded-3xl bg-white/90 p-8 text-center shadow-lg"
       >
-        {(!boss || trophy) && <Confetti />}
+        {(!boss || trophy) && <Confetti theme={working.confettiTheme} />}
         <motion.div
           className="mx-auto mb-3 flex h-24 w-24 items-center justify-center rounded-full bg-amber/25"
           initial={{ scale: 0, rotate: -40 }}
@@ -228,7 +269,13 @@ export function LessonPlayer({
           )}
         </motion.div>
         <p className="text-sm font-bold uppercase tracking-[0.2em] text-coral">
-          {boss ? 'Weekly challenge complete' : 'Trail complete'}
+          {boss
+            ? 'Weekly challenge complete'
+            : mode === 'tricky'
+              ? 'Tricky places drill complete'
+              : mode === 'unit'
+                ? `${drillUnit?.title ?? 'Unit'} drill complete`
+                : 'Trail complete'}
         </p>
         <h2 className="mt-2 font-display text-3xl text-ocean-900">
           {boss
@@ -242,12 +289,14 @@ export function LessonPlayer({
             ? trophy
               ? 'Your trophy is in your Atlas. The next challenge opens in a week.'
               : 'Keep doing your daily lessons and try again next week.'
-            : `That’s today’s ${meta.minutes} minutes done. Come back tomorrow to keep these places in your memory.`}
+            : isDrill
+              ? 'Nice focused practice! You earned +3 Trail Coins.'
+              : `That’s today’s ~${meta.minutes} minutes done. Come back tomorrow to keep these places in your memory.`}
         </p>
         <div className="mt-6 grid grid-cols-3 gap-3">
           <Stat label="Answered" value={String(answered)} />
           <Stat label="Correct" value={`${accuracy}%`} />
-          {boss ? (
+          {boss || isDrill ? (
             <Stat label="Score" value={`${correctCount}/${answered}`} />
           ) : (
             <Stat label="Old favorites" value={String(earlier)} />
@@ -256,15 +305,14 @@ export function LessonPlayer({
         {needsPlacement && onStartPlacement ? (
           <>
             <p className="mt-6 text-sm font-semibold text-ocean-800">
-              This section is ready — drag each state and capital onto the map
-              to unlock the next one.
+              This section is ready — place each spot on the map to unlock the next trail stop!
             </p>
             <button
               type="button"
               onClick={() => onStartPlacement(working.currentUnitId)}
               className="mt-4 w-full rounded-2xl bg-coral px-5 py-3.5 text-lg font-extrabold text-white shadow-md transition hover:brightness-105"
             >
-              Place states &amp; capitals
+              Place on the map
             </button>
             <button
               type="button"
@@ -287,7 +335,11 @@ export function LessonPlayer({
     )
   }
 
-  const wide = step.kind === 'teach' || step.kind === 'map' || step.kind === 'blankmap'
+  const wide =
+    step.kind === 'teach' ||
+    step.kind === 'map' ||
+    step.kind === 'blankmap' ||
+    step.kind === 'pin'
 
   return (
     <div className={`mx-auto ${wide ? 'max-w-5xl' : 'max-w-2xl'}`}>
@@ -307,6 +359,25 @@ export function LessonPlayer({
             animate={{ width: `${progress}%` }}
           />
         </div>
+        {step.kind !== 'teach' && (
+          <button
+            type="button"
+            onClick={() => {
+              const next = !readAloud
+              setReadAloud(next)
+              saveQuizVoicePref(next)
+              if (!next) stopSpeech()
+            }}
+            title={readAloud ? 'Auto-read questions is ON' : 'Auto-read questions is OFF'}
+            className={`rounded-xl px-2.5 py-1.5 text-xs font-extrabold transition ${
+              readAloud
+                ? 'bg-ocean-900 text-sand-100'
+                : 'bg-white/70 text-ocean-800'
+            }`}
+          >
+            {readAloud ? '🔊 Auto' : '🔈 Read'}
+          </button>
+        )}
         <span className="text-sm font-bold text-ocean-900">
           {index + 1}/{steps.length}
         </span>
@@ -359,6 +430,8 @@ export function LessonPlayer({
               onAnswer={onAnswer}
               onNext={onNext}
               cheerIndex={index}
+              readAloud={readAloud}
+              mapThemeId={working.mapTheme}
             />
           )}
         </motion.div>

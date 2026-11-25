@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { AppProvider, useApp } from './state/AppContext'
 import { Home } from './components/Home'
-import { LessonPlayer } from './components/LessonPlayer'
+import { LessonPlayer, type LessonMode } from './components/LessonPlayer'
 import { Progress } from './components/Progress'
 import { SectionReview } from './components/SectionReview'
 import { UnitPlacementChallenge } from './components/UnitPlacementChallenge'
 import { MyAtlas } from './components/MyAtlas'
 import { HeadToHead } from './components/HeadToHead'
 import { GrownUps } from './components/GrownUps'
+import { ExplorerShop } from './components/ExplorerShop'
 import { MapGames } from './components/MapGames'
 import { markPlacementCleared } from './lib/storage'
 
@@ -15,19 +16,23 @@ type Screen =
   | 'home'
   | 'lesson'
   | 'boss'
+  | 'tricky'
+  | 'unit-drill'
   | 'progress'
   | 'review'
   | 'placement'
   | 'atlas'
-  | 'duel'
-  | 'grownups'
   | 'games'
+  | 'duel'
+  | 'shop'
+  | 'grownups'
 
 function Shell() {
   const [screen, setScreenRaw] = useState<Screen>('home')
   const [reviewUnitId, setReviewUnitId] = useState<string | null>(null)
   const [placementUnitId, setPlacementUnitId] = useState<string | null>(null)
-  const { state, active, updateExplorer } = useApp()
+  const [drillUnitId, setDrillUnitId] = useState<string | null>(null)
+  const { state, active, setActiveExplorer, updateExplorer, recordDuel } = useApp()
 
   function setScreen(next: Screen) {
     setScreenRaw(next)
@@ -38,14 +43,31 @@ function Shell() {
   const home = (
     <Home
       onStartLesson={() => setScreen('lesson')}
+      onStartTricky={() => setScreen('tricky')}
       onOpenProgress={() => setScreen('progress')}
       onOpenAtlas={() => setScreen('atlas')}
+      onOpenGames={() => setScreen('games')}
       onStartBoss={() => setScreen('boss')}
       onOpenDuel={() => setScreen('duel')}
-      onOpenGames={() => setScreen('games')}
+      onOpenShop={() => setScreen('shop')}
       onOpenGrownUps={() => setScreen('grownups')}
     />
   )
+
+  const isLessonScreen =
+    screen === 'lesson' ||
+    screen === 'boss' ||
+    screen === 'tricky' ||
+    screen === 'unit-drill'
+
+  const lessonMode: LessonMode =
+    screen === 'boss'
+      ? 'boss'
+      : screen === 'tricky'
+        ? 'tricky'
+        : screen === 'unit-drill'
+          ? 'unit'
+          : 'daily'
 
   return (
     <main
@@ -54,14 +76,15 @@ function Shell() {
       }`}
     >
       {(screen === 'home' || !active) && screen !== 'grownups' && home}
-      {(screen === 'lesson' || screen === 'boss') && active && (
+      {isLessonScreen && active && (
         <div className="px-4 py-8">
           <LessonPlayer
-            key={screen}
+            key={`${screen}-${drillUnitId ?? ''}`}
             explorer={active}
-            mode={screen === 'boss' ? 'boss' : 'daily'}
+            mode={lessonMode}
+            drillUnitId={drillUnitId ?? undefined}
             onUpdate={updateExplorer}
-            onExit={() => setScreen('home')}
+            onExit={() => setScreen(screen === 'unit-drill' ? 'progress' : 'home')}
             onStartPlacement={(unitId) => {
               setPlacementUnitId(unitId)
               setScreen('placement')
@@ -73,6 +96,10 @@ function Shell() {
         <Progress
           onBack={() => setScreen('home')}
           onStartLesson={() => setScreen('lesson')}
+          onStartUnitDrill={(unitId) => {
+            setDrillUnitId(unitId)
+            setScreen('unit-drill')
+          }}
           onOpenReview={(unitId) => {
             setReviewUnitId(unitId)
             setScreen('review')
@@ -104,16 +131,45 @@ function Shell() {
         </div>
       )}
       {screen === 'atlas' && active && (
-        <MyAtlas explorer={active} onBack={() => setScreen('home')} />
+        <MyAtlas
+          explorer={active}
+          onUpdate={updateExplorer}
+          onBack={() => setScreen('home')}
+        />
       )}
       {screen === 'games' && active && (
-        <MapGames explorer={active} explorers={state.explorers} onUpdate={updateExplorer} onBack={() => setScreen('home')} />
+        <MapGames
+          explorer={active}
+          explorers={state.explorers}
+          onUpdate={updateExplorer}
+          onBack={() => setScreen('home')}
+        />
+      )}
+      {screen === 'shop' && active && (
+        <ExplorerShop
+          explorer={active}
+          onUpdate={updateExplorer}
+          onBack={() => setScreen('home')}
+        />
       )}
       {screen === 'duel' && active && (
-        <HeadToHead explorers={state.explorers} onBack={() => setScreen('home')} />
+        <HeadToHead
+          explorers={state.explorers}
+          activeExplorer={active}
+          duelHistory={state.duelHistory ?? []}
+          onRecordDuel={recordDuel}
+          onBack={() => setScreen('home')}
+        />
       )}
       {screen === 'grownups' && (
-        <GrownUps explorers={state.explorers} onBack={() => setScreen('home')} />
+        <GrownUps
+          explorers={state.explorers}
+          onBack={() => setScreen('home')}
+          onPracticeTricky={(explorerId) => {
+            setActiveExplorer(explorerId)
+            setScreen('tricky')
+          }}
+        />
       )}
     </main>
   )

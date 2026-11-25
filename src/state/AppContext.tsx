@@ -10,8 +10,10 @@ import {
 import {
   createExplorer,
   loadState,
+  normalizeState,
   saveState,
   type AppState,
+  type DuelRecord,
   type Explorer,
 } from '../lib/storage'
 
@@ -21,7 +23,11 @@ type AppContextValue = {
   setActiveExplorer: (id: string) => void
   addExplorer: (name: string) => void
   updateExplorer: (explorer: Explorer) => void
-  resetProgress: () => void
+  renameExplorer: (id: string, name: string) => void
+  deleteExplorer: (id: string) => void
+  resetProgress: (id?: string) => void
+  recordDuel: (record: DuelRecord) => void
+  importState: (raw: unknown) => boolean
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -45,6 +51,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addExplorer = useCallback((name: string) => {
     const explorer = createExplorer(name)
     setState((s) => ({
+      ...s,
       explorers: [...s.explorers, explorer],
       activeExplorerId: explorer.id,
     }))
@@ -57,17 +64,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const resetProgress = useCallback(() => {
-    if (!state.activeExplorerId) return
-    const fresh = createExplorer(active?.name ?? 'Explorer')
-    fresh.id = state.activeExplorerId
+  const renameExplorer = useCallback((id: string, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
     setState((s) => ({
       ...s,
-      explorers: s.explorers.map((e) =>
-        e.id === state.activeExplorerId ? fresh : e,
-      ),
+      explorers: s.explorers.map((e) => (e.id === id ? { ...e, name: trimmed } : e)),
     }))
-  }, [active?.name, state.activeExplorerId])
+  }, [])
+
+  const deleteExplorer = useCallback((id: string) => {
+    setState((s) => {
+      const remaining = s.explorers.filter((e) => e.id !== id)
+      return {
+        ...s,
+        explorers: remaining,
+        activeExplorerId:
+          s.activeExplorerId === id ? remaining[0]?.id ?? null : s.activeExplorerId,
+      }
+    })
+  }, [])
+
+  const resetProgress = useCallback(
+    (id?: string) => {
+      const targetId = id ?? state.activeExplorerId
+      if (!targetId) return
+      setState((s) => {
+        const existing = s.explorers.find((e) => e.id === targetId)
+        const fresh = createExplorer(existing?.name ?? 'Explorer')
+        fresh.id = targetId
+        fresh.avatar = existing?.avatar
+        fresh.mapTheme = existing?.mapTheme
+        fresh.passportTheme = existing?.passportTheme
+        fresh.confettiTheme = existing?.confettiTheme
+        fresh.ownedItems = existing?.ownedItems ?? []
+        fresh.visited = existing?.visited ?? {}
+        return {
+          ...s,
+          explorers: s.explorers.map((e) => (e.id === targetId ? fresh : e)),
+        }
+      })
+    },
+    [state.activeExplorerId],
+  )
+
+  const recordDuel = useCallback((record: DuelRecord) => {
+    setState((s) => ({
+      ...s,
+      duelHistory: [...(s.duelHistory ?? []), record].slice(-30),
+    }))
+  }, [])
+
+  const importState = useCallback((raw: unknown): boolean => {
+    if (!raw || typeof raw !== 'object' || !Array.isArray((raw as AppState).explorers)) {
+      return false
+    }
+    const next = normalizeState(raw)
+    setState(next)
+    return true
+  }, [])
 
   const value = useMemo(
     () => ({
@@ -76,7 +131,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActiveExplorer,
       addExplorer,
       updateExplorer,
+      renameExplorer,
+      deleteExplorer,
       resetProgress,
+      recordDuel,
+      importState,
     }),
     [
       state,
@@ -84,7 +143,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActiveExplorer,
       addExplorer,
       updateExplorer,
+      renameExplorer,
+      deleteExplorer,
       resetProgress,
+      recordDuel,
+      importState,
     ],
   )
 
